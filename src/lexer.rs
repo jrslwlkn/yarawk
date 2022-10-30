@@ -104,7 +104,6 @@ impl<'a> Lexer<'a> {
                 }
                 '#' => {
                     // ignoring comments
-                    self.advance(1, false);
                     loop {
                         match self.peek_next() {
                             '\n' => {
@@ -161,11 +160,10 @@ impl<'a> Lexer<'a> {
                 '0'..='9' => {
                     let start = self.pos;
                     let col = self.col;
-                    self.advance(1, false);
                     let mut had_dot = cur == '.';
                     loop {
-                        let cur_digit = self.peek_next();
-                        match cur_digit {
+                        let next_digit = self.peek_next();
+                        match next_digit {
                             '.' if !had_dot => {
                                 had_dot = true;
                                 self.advance(1, false);
@@ -175,14 +173,14 @@ impl<'a> Lexer<'a> {
                             }
                             _ => {
                                 if had_dot {
-                                    let val = self.input[start..self.pos].parse::<f64>().unwrap();
-                                    self.add(TokenType::Literal(PrimitiveType::Float(val)), col, 0);
+                                    let val = self.input[start..=self.pos].parse::<f64>().unwrap();
+                                    self.add(TokenType::Literal(PrimitiveType::Float(val)), col, 1);
                                 } else {
-                                    let val = self.input[start..self.pos].parse::<i64>().unwrap();
+                                    let val = self.input[start..=self.pos].parse::<i64>().unwrap();
                                     self.add(
                                         TokenType::Literal(PrimitiveType::Integer(val)),
                                         col,
-                                        0,
+                                        1,
                                     );
                                 }
                                 break;
@@ -265,6 +263,27 @@ function find_min(num1, num2) {
             Token::new(TokenType::Semicolon, 5, 16),
             Token::new(TokenType::RightCurly, 6, 1),
             Token::new(TokenType::Eof, 6, 2),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn statement() {
+        let source = r#"#
+result = find_min(10, 0.2)"#
+            .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(TokenType::Identifier("result"), 2, 1),
+            Token::new(TokenType::Equal, 2, 8),
+            Token::new(TokenType::Identifier("find_min"), 2, 10),
+            Token::new(TokenType::LeftParen, 2, 18),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(10)), 2, 19),
+            Token::new(TokenType::Comma, 2, 21),
+            Token::new(TokenType::Literal(PrimitiveType::Float(0.2)), 2, 23),
+            Token::new(TokenType::RightParen, 2, 26),
+            Token::new(TokenType::Eof, 2, 27),
         ];
         assert_eq!(lhs, rhs);
     }
