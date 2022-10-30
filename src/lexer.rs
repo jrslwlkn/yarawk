@@ -26,7 +26,7 @@ impl<'a> Lexer<'a> {
         if self.pos + value.len() > self.input.len() {
             return false;
         }
-        &self.input[self.pos..value.len()] == value
+        &self.input[self.pos..self.pos + value.len()] == value
     }
 
     fn peek_next(&self) -> char {
@@ -108,7 +108,7 @@ impl<'a> Lexer<'a> {
                     loop {
                         match self.peek_next() {
                             '\n' => {
-                                self.advance(1, true);
+                                self.advance(2, true);
                                 break;
                             }
                             _ => self.advance(1, false),
@@ -191,6 +191,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '.' => self.add(TokenType::Dot, self.col, 1),
+                ',' => self.add(TokenType::Comma, self.col, 1),
                 _ => self.advance(1, false),
             }
         }
@@ -224,6 +225,46 @@ mod tests {
             Token::new(TokenType::Semicolon, 2, 24),
             Token::new(TokenType::RightCurly, 3, 1),
             Token::new(TokenType::Eof, 3, 2),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn function() {
+        let source = r#"# Returns minimum number
+function find_min(num1, num2) {
+    if (num1 < num2)
+        return num1
+    return num2
+}"#
+        .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(TokenType::Function, 2, 1),
+            Token::new(TokenType::Identifier("find_min"), 2, 10),
+            Token::new(TokenType::LeftParen, 2, 18),
+            Token::new(TokenType::Identifier("num1"), 2, 19),
+            Token::new(TokenType::Comma, 2, 23),
+            Token::new(TokenType::Identifier("num2"), 2, 25),
+            Token::new(TokenType::RightParen, 2, 29),
+            Token::new(TokenType::LeftCurly, 2, 31),
+            Token::new(TokenType::Semicolon, 2, 32),
+            Token::new(TokenType::If, 3, 5),
+            Token::new(TokenType::LeftParen, 3, 8),
+            Token::new(TokenType::Identifier("num1"), 3, 9),
+            Token::new(TokenType::LessThan, 3, 14),
+            Token::new(TokenType::Identifier("num2"), 3, 16),
+            Token::new(TokenType::RightParen, 3, 20),
+            Token::new(TokenType::Semicolon, 3, 21),
+            Token::new(TokenType::Return, 4, 9),
+            Token::new(TokenType::Identifier("num1"), 4, 16),
+            Token::new(TokenType::Semicolon, 4, 20),
+            Token::new(TokenType::Return, 5, 5),
+            Token::new(TokenType::Identifier("num2"), 5, 12),
+            Token::new(TokenType::Semicolon, 5, 16),
+            Token::new(TokenType::RightCurly, 6, 1),
+            Token::new(TokenType::Eof, 6, 2),
         ];
         assert_eq!(lhs, rhs);
     }

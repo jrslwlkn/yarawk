@@ -34,6 +34,7 @@ pub enum TokenType<'a> {
     Semicolon,
     Colon,
     Dot,
+    Comma,
 
     Equal,
     EqualEqual,
@@ -58,7 +59,6 @@ pub enum TokenType<'a> {
 
     Begin,
     End,
-
     If,
     Else,
     While,
