@@ -268,7 +268,7 @@ function find_min(num1, num2) {
     }
 
     #[test]
-    fn statement() {
+    fn statement1() {
         let source = r#"#
 result = find_min(10, 0.2)"#
             .to_string();
@@ -284,6 +284,77 @@ result = find_min(10, 0.2)"#
             Token::new(TokenType::Literal(PrimitiveType::Float(0.2)), 2, 23),
             Token::new(TokenType::RightParen, 2, 26),
             Token::new(TokenType::Eof, 2, 27),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn statement2() {
+        let source = r#"#
+db[n, "return"] = st"#
+            .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(TokenType::Identifier("db"), 2, 1),
+            Token::new(TokenType::LeftBracket, 2, 3),
+            Token::new(TokenType::Identifier("n"), 2, 4),
+            Token::new(TokenType::Comma, 2, 5),
+            Token::new(TokenType::Literal(PrimitiveType::String("return")), 2, 7),
+            Token::new(TokenType::RightBracket, 2, 15),
+            Token::new(TokenType::Equal, 2, 17),
+            Token::new(TokenType::Identifier("st"), 2, 19),
+            Token::new(TokenType::Eof, 2, 21),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn statement3() {
+        let source = r#"#
+a++ && b-- || c != d"#
+            .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(TokenType::Identifier("a"), 2, 1),
+            Token::new(TokenType::PlusPlus, 2, 2),
+            Token::new(TokenType::And, 2, 5),
+            Token::new(TokenType::Identifier("b"), 2, 8),
+            Token::new(TokenType::MinusMinus, 2, 9),
+            Token::new(TokenType::Or, 2, 12),
+            Token::new(TokenType::Identifier("c"), 2, 15),
+            Token::new(TokenType::NotEqual, 2, 17),
+            Token::new(TokenType::Identifier("d"), 2, 20),
+            Token::new(TokenType::Eof, 2, 21),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn statement4() {
+        let source = r#"#
+while (1) {
+    break
+    continue;
+}"#
+        .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(TokenType::While, 2, 1),
+            Token::new(TokenType::LeftParen, 2, 7),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 2, 8),
+            Token::new(TokenType::RightParen, 2, 9),
+            Token::new(TokenType::LeftCurly, 2, 11),
+            Token::new(TokenType::Semicolon, 2, 12),
+            Token::new(TokenType::Break, 3, 5),
+            Token::new(TokenType::Semicolon, 3, 10),
+            Token::new(TokenType::Continue, 4, 5),
+            Token::new(TokenType::Semicolon, 4, 13),
+            Token::new(TokenType::Semicolon, 4, 14),
+            Token::new(TokenType::RightCurly, 5, 1),
+            Token::new(TokenType::Eof, 5, 2),
         ];
         assert_eq!(lhs, rhs);
     }
