@@ -78,7 +78,11 @@ impl<'a> Lexer<'a> {
                 '!' => self.add(TokenType::Not, self.col, 1),
                 '~' => self.add(TokenType::Tilde, self.col, 1),
                 '*' => self.add(TokenType::Star, self.col, 1),
-                '/' => self.add(TokenType::Slash, self.col, 1),
+                '/' => {
+                    // TODO: figure out how to unambiguously parse re patterns (separated with slashes)
+                    //       and division signs (denoted with slashes)
+                    self.add(TokenType::Slash, self.col, 1);
+                }
                 '<' if self.peek("<=") => self.add(TokenType::LessEqual, self.col, 2),
                 '<' => self.add(TokenType::LessThan, self.col, 1),
                 '>' if self.peek(">=") => self.add(TokenType::GreaterEqual, self.col, 2),
