@@ -79,7 +79,6 @@ impl<'a> Lexer<'a> {
                 '~' => self.add(TokenType::Tilde, self.col, 1),
                 '*' => self.add(TokenType::Star, self.col, 1),
                 '/' => self.add(TokenType::Slash, self.col, 1),
-                '\\' => self.add(TokenType::Backslash, self.col, 1),
                 '<' if self.peek("<=") => self.add(TokenType::LessEqual, self.col, 2),
                 '<' => self.add(TokenType::LessThan, self.col, 1),
                 '>' if self.peek(">=") => self.add(TokenType::GreaterEqual, self.col, 2),
@@ -102,8 +101,8 @@ impl<'a> Lexer<'a> {
                     self.add(TokenType::Semicolon, self.col, 1);
                     self.advance(0, true);
                 }
-                '#' => {
-                    // ignoring comments
+                '#' | '\\' => {
+                    // ignore comments and line splits
                     loop {
                         match self.peek_next() {
                             '\n' => {

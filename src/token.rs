@@ -51,7 +51,6 @@ pub enum TokenType<'a> {
     Minus,
     MinusMinus,
     Slash,
-    Backslash,
     Star,
     And,
     Or,
