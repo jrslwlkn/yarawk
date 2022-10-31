@@ -51,7 +51,7 @@ impl<'a> Lexer<'a> {
         self.pos += len;
     }
 
-    fn add(&mut self, value: TokenType<'a>, col: usize, len: usize) {
+    fn emit(&mut self, value: TokenType<'a>, col: usize, len: usize) {
         self.tokens.push(Token::new(value, self.row, col));
         self.advance(len, false);
     }
@@ -63,25 +63,25 @@ impl<'a> Lexer<'a> {
             }
             let cur = self.chars.get(self.pos).unwrap().to_owned();
             match cur {
-                '{' => self.add(TokenType::LeftCurly, self.col, 1),
-                '}' => self.add(TokenType::RightCurly, self.col, 1),
-                '(' => self.add(TokenType::LeftParen, self.col, 1),
-                ')' => self.add(TokenType::RightParen, self.col, 1),
-                '[' => self.add(TokenType::LeftBracket, self.col, 1),
-                ']' => self.add(TokenType::RightBracket, self.col, 1),
-                ';' => self.add(TokenType::Semicolon, self.col, 1),
-                ':' => self.add(TokenType::Colon, self.col, 1),
-                '+' if self.peek("++") => self.add(TokenType::PlusPlus, self.col, 2),
-                '+' => self.add(TokenType::Plus, self.col, 1),
-                '-' if self.peek("--") => self.add(TokenType::MinusMinus, self.col, 2),
-                '-' => self.add(TokenType::Minus, self.col, 1),
-                '=' if self.peek("==") => self.add(TokenType::EqualEqual, self.col, 2),
-                '=' => self.add(TokenType::Equal, self.col, 1),
-                '!' if self.peek("!=") => self.add(TokenType::NotEqual, self.col, 2),
-                '!' if self.peek("!~") => self.add(TokenType::NotTilde, self.col, 2),
-                '!' => self.add(TokenType::Not, self.col, 1),
-                '~' => self.add(TokenType::Tilde, self.col, 1),
-                '*' => self.add(TokenType::Star, self.col, 1),
+                '{' => self.emit(TokenType::LeftCurly, self.col, 1),
+                '}' => self.emit(TokenType::RightCurly, self.col, 1),
+                '(' => self.emit(TokenType::LeftParen, self.col, 1),
+                ')' => self.emit(TokenType::RightParen, self.col, 1),
+                '[' => self.emit(TokenType::LeftBracket, self.col, 1),
+                ']' => self.emit(TokenType::RightBracket, self.col, 1),
+                ';' => self.emit(TokenType::Semicolon, self.col, 1),
+                ':' => self.emit(TokenType::Colon, self.col, 1),
+                '+' if self.peek("++") => self.emit(TokenType::PlusPlus, self.col, 2),
+                '+' => self.emit(TokenType::Plus, self.col, 1),
+                '-' if self.peek("--") => self.emit(TokenType::MinusMinus, self.col, 2),
+                '-' => self.emit(TokenType::Minus, self.col, 1),
+                '=' if self.peek("==") => self.emit(TokenType::EqualEqual, self.col, 2),
+                '=' => self.emit(TokenType::Equal, self.col, 1),
+                '!' if self.peek("!=") => self.emit(TokenType::NotEqual, self.col, 2),
+                '!' if self.peek("!~") => self.emit(TokenType::NotTilde, self.col, 2),
+                '!' => self.emit(TokenType::Not, self.col, 1),
+                '~' => self.emit(TokenType::Tilde, self.col, 1),
+                '*' => self.emit(TokenType::Star, self.col, 1),
                 '/' => {
                     // when matched first Slash, go till the end of the line
                     let mut pair_idx = -1;
@@ -109,7 +109,7 @@ impl<'a> Lexer<'a> {
                         // before: LeftParen, Equal, EqualEqual, NotEqual, Tilde, NotTilde, Nothing
                         match self.tokens.last() {
                             None => {
-                                self.add(
+                                self.emit(
                                     TokenType::Literal(PrimitiveType::Pattern(
                                         Regex::from_str(&self.input[self.pos + 1..cur_pos])
                                             .unwrap(),
@@ -125,7 +125,7 @@ impl<'a> Lexer<'a> {
                                 | TokenType::NotEqual
                                 | TokenType::Tilde
                                 | TokenType::NotTilde => {
-                                    self.add(
+                                    self.emit(
                                         TokenType::Literal(PrimitiveType::Pattern(
                                             Regex::from_str(&self.input[self.pos + 1..cur_pos])
                                                 .unwrap(),
@@ -134,35 +134,34 @@ impl<'a> Lexer<'a> {
                                         pair_idx as usize - self.pos + 1,
                                     );
                                 }
-                                _ => self.add(TokenType::Slash, self.col, 1),
+                                _ => self.emit(TokenType::Slash, self.col, 1),
                             },
-                            _ => self.add(TokenType::Slash, self.col, 1),
                         }
                     } else {
                         // this is Slash
-                        self.add(TokenType::Slash, self.col, 1);
+                        self.emit(TokenType::Slash, self.col, 1);
                     }
                 }
-                '<' if self.peek("<=") => self.add(TokenType::LessEqual, self.col, 2),
-                '<' => self.add(TokenType::LessThan, self.col, 1),
-                '>' if self.peek(">=") => self.add(TokenType::GreaterEqual, self.col, 2),
-                '>' => self.add(TokenType::GreaterThan, self.col, 1),
-                '&' if self.peek("&&") => self.add(TokenType::And, self.col, 2),
-                '|' if self.peek("||") => self.add(TokenType::Or, self.col, 2),
-                'B' if self.peek("BEGIN") => self.add(TokenType::Begin, self.col, 5),
-                'E' if self.peek("END") => self.add(TokenType::End, self.col, 3),
-                'f' if self.peek("function") => self.add(TokenType::Function, self.col, 8),
-                'i' if self.peek("if") => self.add(TokenType::If, self.col, 2),
-                'e' if self.peek("else") => self.add(TokenType::Else, self.col, 4),
-                'b' if self.peek("break") => self.add(TokenType::Break, self.col, 5),
-                'c' if self.peek("continue") => self.add(TokenType::Continue, self.col, 8),
-                'r' if self.peek("return") => self.add(TokenType::Return, self.col, 6),
-                'w' if self.peek("while") => self.add(TokenType::While, self.col, 5),
-                'f' if self.peek("for") => self.add(TokenType::For, self.col, 3),
-                'i' if self.peek("in") => self.add(TokenType::In, self.col, 2),
+                '<' if self.peek("<=") => self.emit(TokenType::LessEqual, self.col, 2),
+                '<' => self.emit(TokenType::LessThan, self.col, 1),
+                '>' if self.peek(">=") => self.emit(TokenType::GreaterEqual, self.col, 2),
+                '>' => self.emit(TokenType::GreaterThan, self.col, 1),
+                '&' if self.peek("&&") => self.emit(TokenType::And, self.col, 2),
+                '|' if self.peek("||") => self.emit(TokenType::Or, self.col, 2),
+                'B' if self.peek("BEGIN") => self.emit(TokenType::Begin, self.col, 5),
+                'E' if self.peek("END") => self.emit(TokenType::End, self.col, 3),
+                'f' if self.peek("function") => self.emit(TokenType::Function, self.col, 8),
+                'i' if self.peek("if") => self.emit(TokenType::If, self.col, 2),
+                'e' if self.peek("else") => self.emit(TokenType::Else, self.col, 4),
+                'b' if self.peek("break") => self.emit(TokenType::Break, self.col, 5),
+                'c' if self.peek("continue") => self.emit(TokenType::Continue, self.col, 8),
+                'r' if self.peek("return") => self.emit(TokenType::Return, self.col, 6),
+                'w' if self.peek("while") => self.emit(TokenType::While, self.col, 5),
+                'f' if self.peek("for") => self.emit(TokenType::For, self.col, 3),
+                'i' if self.peek("in") => self.emit(TokenType::In, self.col, 2),
                 '\n' => {
                     // treating all newlines as semicolons because semicolons are optional in awk
-                    self.add(TokenType::Semicolon, self.col, 1);
+                    self.emit(TokenType::Semicolon, self.col, 1);
                     self.advance(0, true);
                 }
                 '#' | '\\' => {
@@ -186,7 +185,7 @@ impl<'a> Lexer<'a> {
                         let next_char = self.peek_next();
                         match next_char {
                             _ if next_char == quote || next_char == '\0' => {
-                                self.add(
+                                self.emit(
                                     TokenType::Literal(PrimitiveType::String(
                                         &self.input[start..=self.pos],
                                     )),
@@ -209,7 +208,7 @@ impl<'a> Lexer<'a> {
                                 self.advance(1, false);
                             }
                             _ => {
-                                self.add(
+                                self.emit(
                                     TokenType::Identifier(&self.input[start..=self.pos]),
                                     col,
                                     0,
@@ -237,10 +236,14 @@ impl<'a> Lexer<'a> {
                             _ => {
                                 if had_dot {
                                     let val = self.input[start..=self.pos].parse::<f64>().unwrap();
-                                    self.add(TokenType::Literal(PrimitiveType::Float(val)), col, 1);
+                                    self.emit(
+                                        TokenType::Literal(PrimitiveType::Float(val)),
+                                        col,
+                                        1,
+                                    );
                                 } else {
                                     let val = self.input[start..=self.pos].parse::<i64>().unwrap();
-                                    self.add(
+                                    self.emit(
                                         TokenType::Literal(PrimitiveType::Integer(val)),
                                         col,
                                         1,
@@ -251,12 +254,12 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
-                '.' => self.add(TokenType::Dot, self.col, 1),
-                ',' => self.add(TokenType::Comma, self.col, 1),
+                '.' => self.emit(TokenType::Dot, self.col, 1),
+                ',' => self.emit(TokenType::Comma, self.col, 1),
                 _ => self.advance(1, false),
             }
         }
-        self.add(TokenType::Eof, self.col, 0);
+        self.emit(TokenType::Eof, self.col, 0);
         self.tokens.clone()
     }
 }
