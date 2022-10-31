@@ -81,7 +81,16 @@ impl<'a> Lexer<'a> {
                 '!' if self.peek("!~") => self.emit(TokenType::NotTilde, self.col, 2),
                 '!' => self.emit(TokenType::Not, self.col, 1),
                 '~' => self.emit(TokenType::Tilde, self.col, 1),
+                '*' if self.peek("*=") => self.emit(TokenType::StarEqual, self.col, 2),
                 '*' => self.emit(TokenType::Star, self.col, 1),
+                '%' if self.peek("%=") => self.emit(TokenType::PercentEqual, self.col, 2),
+                '%' => self.emit(TokenType::Percent, self.col, 1),
+                '^' if self.peek("^=") => self.emit(TokenType::CarrotEqual, self.col, 2),
+                '^' => self.emit(TokenType::Percent, self.col, 1),
+                '$' => self.emit(TokenType::Dollar, self.col, 1),
+                '/' if self.peek("/=") && !self.peek("/==") => {
+                    self.emit(TokenType::SlashEqual, self.col, 2)
+                }
                 '/' => {
                     // when matched first Slash, go till the end of the line
                     let mut pair_idx = -1;
@@ -150,15 +159,18 @@ impl<'a> Lexer<'a> {
                 '|' if self.peek("||") => self.emit(TokenType::Or, self.col, 2),
                 'B' if self.peek("BEGIN") => self.emit(TokenType::Begin, self.col, 5),
                 'E' if self.peek("END") => self.emit(TokenType::End, self.col, 3),
+                'e' if self.peek("exit") => self.emit(TokenType::Exit, self.col, 4),
                 'f' if self.peek("function") => self.emit(TokenType::Function, self.col, 8),
                 'i' if self.peek("if") => self.emit(TokenType::If, self.col, 2),
                 'e' if self.peek("else") => self.emit(TokenType::Else, self.col, 4),
                 'b' if self.peek("break") => self.emit(TokenType::Break, self.col, 5),
                 'c' if self.peek("continue") => self.emit(TokenType::Continue, self.col, 8),
                 'r' if self.peek("return") => self.emit(TokenType::Return, self.col, 6),
+                'd' if self.peek("do") => self.emit(TokenType::Do, self.col, 2),
                 'w' if self.peek("while") => self.emit(TokenType::While, self.col, 5),
                 'f' if self.peek("for") => self.emit(TokenType::For, self.col, 3),
                 'i' if self.peek("in") => self.emit(TokenType::In, self.col, 2),
+                'g' if self.peek("go") => self.emit(TokenType::Go, self.col, 2),
                 '\n' => {
                     // treating all newlines as semicolons because semicolons are optional in awk
                     self.emit(TokenType::Semicolon, self.col, 1);
