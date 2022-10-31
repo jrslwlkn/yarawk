@@ -1,3 +1,7 @@
+use std::str::FromStr;
+
+use regex::Regex;
+
 use crate::token::{PrimitiveType, Token, TokenType};
 
 #[derive(Debug)]
@@ -79,9 +83,65 @@ impl<'a> Lexer<'a> {
                 '~' => self.add(TokenType::Tilde, self.col, 1),
                 '*' => self.add(TokenType::Star, self.col, 1),
                 '/' => {
-                    // TODO: figure out how to unambiguously parse re patterns (separated with slashes)
-                    //       and division signs (denoted with slashes)
-                    self.add(TokenType::Slash, self.col, 1);
+                    // when matched first Slash, go till the end of the line
+                    let mut pair_idx = -1;
+                    let mut cur_pos = self.pos + 1;
+                    loop {
+                        match self.chars.get(cur_pos) {
+                            None => break,
+                            Some(val) => match val {
+                                '\n' => break,
+                                '\\' if !self.chars.get(cur_pos + 1).is_none()
+                                    && *self.chars.get(cur_pos + 1).unwrap() == '/' =>
+                                {
+                                    cur_pos += 2;
+                                }
+                                '/' => {
+                                    pair_idx = cur_pos as i64;
+                                    break;
+                                }
+                                _ => cur_pos += 1,
+                            },
+                        }
+                    }
+                    if pair_idx > 0 {
+                        // if found another unescaped Slash, try following to determine if this is Pattern:
+                        // before: LeftParen, Equal, EqualEqual, NotEqual, Tilde, NotTilde, Nothing
+                        match self.tokens.last() {
+                            None => {
+                                self.add(
+                                    TokenType::Literal(PrimitiveType::Pattern(
+                                        Regex::from_str(&self.input[self.pos + 1..cur_pos])
+                                            .unwrap(),
+                                    )),
+                                    self.col,
+                                    pair_idx as usize - self.pos + 1,
+                                );
+                            }
+                            Some(t) => match t.value {
+                                TokenType::LeftParen
+                                | TokenType::Equal
+                                | TokenType::EqualEqual
+                                | TokenType::NotEqual
+                                | TokenType::Tilde
+                                | TokenType::NotTilde => {
+                                    self.add(
+                                        TokenType::Literal(PrimitiveType::Pattern(
+                                            Regex::from_str(&self.input[self.pos + 1..cur_pos])
+                                                .unwrap(),
+                                        )),
+                                        self.col,
+                                        pair_idx as usize - self.pos + 1,
+                                    );
+                                }
+                                _ => self.add(TokenType::Slash, self.col, 1),
+                            },
+                            _ => self.add(TokenType::Slash, self.col, 1),
+                        }
+                    } else {
+                        // this is Slash
+                        self.add(TokenType::Slash, self.col, 1);
+                    }
                 }
                 '<' if self.peek("<=") => self.add(TokenType::LessEqual, self.col, 2),
                 '<' => self.add(TokenType::LessThan, self.col, 1),
@@ -358,6 +418,27 @@ while (1) {
             Token::new(TokenType::Semicolon, 4, 14),
             Token::new(TokenType::RightCurly, 5, 1),
             Token::new(TokenType::Eof, 5, 2),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn re_vs_div() {
+        let source = r#"#
+/hello/ 2/4"#
+            .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(
+                TokenType::Literal(PrimitiveType::Pattern(Regex::new("hello").unwrap())),
+                2,
+                1,
+            ),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(2)), 2, 9),
+            Token::new(TokenType::Slash, 2, 10),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(4)), 2, 11),
+            Token::new(TokenType::Eof, 2, 12),
         ];
         assert_eq!(lhs, rhs);
     }

@@ -1,16 +1,23 @@
-#[derive(Clone, Copy, Debug)]
+use regex::Regex;
+
+#[derive(Clone, Debug)]
 pub enum PrimitiveType<'a> {
     String(&'a str),
-    Pattern(&'a str),
+    Pattern(Regex),
     Integer(i64),
     Float(f64),
+}
+
+#[derive(Clone, Debug)]
+pub struct RePattern {
+    pub value: Regex,
 }
 
 impl<'a> PartialEq for PrimitiveType<'a> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::String(a), Self::String(b)) => a == b,
-            (Self::Pattern(a), Self::Pattern(b)) => a == b,
+            (Self::Pattern(a), Self::Pattern(b)) => a.to_string() == b.to_string(),
             (Self::Integer(a), Self::Integer(b)) => a == b,
             (Self::Float(a), Self::Float(b)) => a.to_string() == b.to_string(),
             _ => false,
@@ -20,7 +27,7 @@ impl<'a> PartialEq for PrimitiveType<'a> {
 
 impl<'a> Eq for PrimitiveType<'a> {}
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TokenType<'a> {
     Identifier(&'a str),
     Literal(PrimitiveType<'a>),
@@ -70,11 +77,11 @@ pub enum TokenType<'a> {
     Eof,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Token<'a> {
-    value: TokenType<'a>,
-    row: usize,
-    col: usize,
+    pub value: TokenType<'a>,
+    pub row: usize,
+    pub col: usize,
 }
 
 impl<'a> Token<'a> {
