@@ -40,6 +40,13 @@ pub enum ExpressionType<'a> {
     ),
 }
 
+pub struct Program<'a> {
+    functions: Vec<StatementType<'a>>,
+    begin: Vec<StatementType<'a>>,
+    end: Vec<StatementType<'a>>,
+    actions: Vec<(ExpressionType<'a>, Vec<StatementType<'a>>)>,
+}
+
 pub struct Parser<'a> {
     tokens: Vec<Token<'a>>,
 }
@@ -49,7 +56,22 @@ impl<'a> Parser<'a> {
         Self { tokens }
     }
 
-    pub fn parse() -> Vec<StatementType<'a>> {
+    fn peek(&self, start: usize, tokens: &Vec<Token>) -> bool {
         todo!()
+    }
+
+    pub fn parse(&self) -> Program {
+        let mut functions = Vec::<StatementType<'a>>::new();
+        let mut begin = Vec::<StatementType<'a>>::new();
+        let mut end = Vec::<StatementType<'a>>::new();
+        let mut actions = Vec::<(ExpressionType<'a>, Vec<StatementType<'a>>)>::new();
+        for (idx, cur) in self.tokens.iter().enumerate() {}
+
+        return Program {
+            functions,
+            begin,
+            end,
+            actions,
+        };
     }
 }
