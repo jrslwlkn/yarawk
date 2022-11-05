@@ -58,6 +58,7 @@ pub enum TokenType<'a> {
     CarrotEqual,
     Question,
     Dollar,
+    Newline,
 
     Plus,
     PlusPlus,
@@ -75,7 +76,6 @@ pub enum TokenType<'a> {
 
     Begin,
     End,
-    Go,
     If,
     Else,
     Do,
@@ -88,6 +88,8 @@ pub enum TokenType<'a> {
     Return,
     Exit,
     Function,
+    Print,
+    Delete,
     Eof,
 }
 

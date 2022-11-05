@@ -69,7 +69,15 @@ impl<'a> Lexer<'a> {
                 ')' => self.emit(TokenType::RightParen, self.col, 1),
                 '[' => self.emit(TokenType::LeftBracket, self.col, 1),
                 ']' => self.emit(TokenType::RightBracket, self.col, 1),
-                ';' => self.emit(TokenType::Semicolon, self.col, 1),
+                ';' => {
+                    if !self.tokens.is_empty()
+                        && self.tokens.last().unwrap().value != TokenType::Semicolon
+                    {
+                        self.emit(TokenType::Semicolon, self.col, 1);
+                    } else {
+                        self.advance(1, false);
+                    }
+                }
                 ':' => self.emit(TokenType::Colon, self.col, 1),
                 '+' if self.peek("++") => self.emit(TokenType::PlusPlus, self.col, 2),
                 '+' => self.emit(TokenType::Plus, self.col, 1),
@@ -159,6 +167,7 @@ impl<'a> Lexer<'a> {
                 '|' if self.peek("||") => self.emit(TokenType::Or, self.col, 2),
                 'B' if self.peek("BEGIN") => self.emit(TokenType::Begin, self.col, 5),
                 'E' if self.peek("END") => self.emit(TokenType::End, self.col, 3),
+                'd' if self.peek("delete") => self.emit(TokenType::Delete, self.col, 6),
                 'e' if self.peek("exit") => self.emit(TokenType::Exit, self.col, 4),
                 'f' if self.peek("function") => self.emit(TokenType::Function, self.col, 8),
                 'i' if self.peek("if") => self.emit(TokenType::If, self.col, 2),
@@ -170,11 +179,19 @@ impl<'a> Lexer<'a> {
                 'w' if self.peek("while") => self.emit(TokenType::While, self.col, 5),
                 'f' if self.peek("for") => self.emit(TokenType::For, self.col, 3),
                 'i' if self.peek("in") => self.emit(TokenType::In, self.col, 2),
-                'g' if self.peek("go") => self.emit(TokenType::Go, self.col, 2),
                 '\n' => {
-                    // treating all newlines as semicolons because semicolons are optional in awk
-                    self.emit(TokenType::Semicolon, self.col, 1);
-                    self.advance(0, true);
+                    match self.tokens.last() {
+                        Some(t) => match t.value {
+                            TokenType::Semicolon | TokenType::LeftCurly | TokenType::LeftParen => {}
+                            _ => {
+                                self.emit(TokenType::Newline, self.col, 1);
+                                self.advance(0, true);
+                                continue 'main;
+                            }
+                        },
+                        _ => {}
+                    }
+                    self.advance(1, true);
                 }
                 '#' | '\\' => {
                     // ignore comments and line splits
@@ -291,14 +308,13 @@ mod tests {
         let rhs = vec![
             Token::new(TokenType::Begin, 1, 1),
             Token::new(TokenType::LeftCurly, 1, 7),
-            Token::new(TokenType::Semicolon, 1, 8),
             Token::new(TokenType::Identifier("print"), 2, 5),
             Token::new(
                 TokenType::Literal(PrimitiveType::String("hello world")),
                 2,
                 11,
             ),
-            Token::new(TokenType::Semicolon, 2, 24),
+            Token::new(TokenType::Newline, 2, 24),
             Token::new(TokenType::RightCurly, 3, 1),
             Token::new(TokenType::Eof, 3, 2),
         ];
@@ -311,7 +327,7 @@ mod tests {
 function find_min(num1, num2) {
     if (num1 < num2)
         return num1
-    return num2
+    return num2;
 }"#
         .to_string();
         let mut lexer = Lexer::new(&source);
@@ -325,17 +341,16 @@ function find_min(num1, num2) {
             Token::new(TokenType::Identifier("num2"), 2, 25),
             Token::new(TokenType::RightParen, 2, 29),
             Token::new(TokenType::LeftCurly, 2, 31),
-            Token::new(TokenType::Semicolon, 2, 32),
             Token::new(TokenType::If, 3, 5),
             Token::new(TokenType::LeftParen, 3, 8),
             Token::new(TokenType::Identifier("num1"), 3, 9),
             Token::new(TokenType::LessThan, 3, 14),
             Token::new(TokenType::Identifier("num2"), 3, 16),
             Token::new(TokenType::RightParen, 3, 20),
-            Token::new(TokenType::Semicolon, 3, 21),
+            Token::new(TokenType::Newline, 3, 21),
             Token::new(TokenType::Return, 4, 9),
             Token::new(TokenType::Identifier("num1"), 4, 16),
-            Token::new(TokenType::Semicolon, 4, 20),
+            Token::new(TokenType::Newline, 4, 20),
             Token::new(TokenType::Return, 5, 5),
             Token::new(TokenType::Identifier("num2"), 5, 12),
             Token::new(TokenType::Semicolon, 5, 16),
@@ -425,12 +440,10 @@ while (1) {
             Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 2, 8),
             Token::new(TokenType::RightParen, 2, 9),
             Token::new(TokenType::LeftCurly, 2, 11),
-            Token::new(TokenType::Semicolon, 2, 12),
             Token::new(TokenType::Break, 3, 5),
-            Token::new(TokenType::Semicolon, 3, 10),
+            Token::new(TokenType::Newline, 3, 10),
             Token::new(TokenType::Continue, 4, 5),
             Token::new(TokenType::Semicolon, 4, 13),
-            Token::new(TokenType::Semicolon, 4, 14),
             Token::new(TokenType::RightCurly, 5, 1),
             Token::new(TokenType::Eof, 5, 2),
         ];
