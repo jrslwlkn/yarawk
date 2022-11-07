@@ -2,7 +2,7 @@ use std::{mem::discriminant, slice::Iter};
 
 use crate::token::{PrimitiveType, Token, TokenType};
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Statement<'a> {
     Empty,
     Block(Vec<Box<Statement<'a>>>),
@@ -10,7 +10,6 @@ pub enum Statement<'a> {
     Continue,
     Next,
     Expression(Expression<'a>),
-    Assignment,
     IoStatement, // TODO: figure out
     Print(Expression<'a>),
     Exit(Expression<'a>),
@@ -31,14 +30,156 @@ pub enum Statement<'a> {
     ),
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Expression<'a> {
     Empty,
     Literal(PrimitiveType<'a>),
+    Variable(&'a str),
+    FieldVariable(Box<Expression<'a>>),
+    ArrayVariable(Box<Expression<'a>>),
     Grouping(Box<Expression<'a>>),
     Function(&'a str, Box<Expression<'a>>),
-    Unary(TokenType<'a>, Box<Expression<'a>>),
-    Binary(Box<Expression<'a>>, TokenType<'a>, Box<Expression<'a>>),
+    Unary(UnaryOperator, Box<Expression<'a>>),
+    Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
+}
+
+impl<'a> Expression<'a> {
+    fn precedence(&self) -> u8 {
+        match self {
+            Expression::Empty => 255,
+            Expression::Literal(_) => 255,
+            Expression::Variable(_) => 0,
+            Expression::Function(_, _) => 0,
+            Expression::Grouping(_) => 0,
+            Expression::ArrayVariable(_) => 1,
+            Expression::FieldVariable(_) => 2,
+            Expression::Unary(op, _) => match op {
+                UnaryOperator::PostPlusPlus
+                | UnaryOperator::PostMinusMinus
+                | UnaryOperator::PrePlusPlus
+                | UnaryOperator::PreMinusMinus => 3,
+                UnaryOperator::PrePlus | UnaryOperator::PreMinus | UnaryOperator::Not => 5,
+            },
+            Expression::Binary(op, _, _) => match op {
+                BinaryOperator::Power => 4,
+                BinaryOperator::Multiply | &BinaryOperator::Divide | BinaryOperator::Modulo => 6,
+                BinaryOperator::Plus | BinaryOperator::Minus => 7,
+                BinaryOperator::Concat => 8,
+                BinaryOperator::EqualEqual
+                | BinaryOperator::NotEqual
+                | BinaryOperator::LessThan
+                | BinaryOperator::LessEqual
+                | BinaryOperator::GreaterThan
+                | BinaryOperator::GreaterEqual => 9,
+                BinaryOperator::Tilde | BinaryOperator::NotTilde => 10,
+                BinaryOperator::In => 11,
+                BinaryOperator::And => 12,
+                BinaryOperator::Or => 13,
+                BinaryOperator::Ternary => 14,
+                BinaryOperator::Equal => 15,
+            },
+        }
+    }
+
+    fn is_precedent_to(&self, t: &TokenType) -> Option<bool> {
+        Some(match t {
+            TokenType::PlusPlus | TokenType::MinusMinus => self.precedence() <= 3,
+            TokenType::Carrot => self.precedence() <= 4,
+            TokenType::Star | TokenType::Slash | TokenType::Percent => self.precedence() <= 5,
+            TokenType::Plus | TokenType::Minus => self.precedence() <= 7, // treating these only as binary here
+            TokenType::Identifier(v) if v == &"in" => self.precedence() <= 11,
+            TokenType::LeftParen | TokenType::Literal(_) | TokenType::Identifier(_) => {
+                self.precedence() <= 8
+            } // treating these as concat
+            TokenType::EqualEqual
+            | TokenType::NotEqual
+            | TokenType::LessThan
+            | TokenType::LessEqual
+            | TokenType::GreaterThan
+            | TokenType::GreaterEqual => self.precedence() <= 9,
+            TokenType::Tilde | TokenType::NotTilde => self.precedence() <= 10,
+            TokenType::And => self.precedence() <= 12,
+            TokenType::Or => self.precedence() <= 13,
+            TokenType::Question => todo!(), // FIXME: need to check in fn and keep parsing ternary
+            TokenType::Equal
+            | TokenType::PlusEqual
+            | TokenType::MinusEqual
+            | TokenType::StarEqual
+            | TokenType::SlashEqual
+            | TokenType::PercentEqual
+            | TokenType::CarrotEqual => self.precedence() <= 14,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum UnaryOperator {
+    PrePlus,
+    PrePlusPlus,
+    PreMinus,
+    PreMinusMinus,
+    PostPlusPlus,
+    PostMinusMinus,
+    Not,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum BinaryOperator {
+    Concat,
+    EqualEqual,
+    NotEqual,
+    LessThan,
+    LessEqual,
+    GreaterThan,
+    GreaterEqual,
+    Tilde,
+    NotTilde,
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    Modulo,
+    Power,
+    Equal,
+    Or,
+    And,
+    Ternary,
+    In,
+}
+
+impl BinaryOperator {
+    fn convert(t: &TokenType) -> Self {
+        match t {
+            TokenType::Carrot => Self::Power,
+            TokenType::Star => Self::Multiply,
+            TokenType::Slash => Self::Divide,
+            TokenType::Percent => Self::Modulo,
+            TokenType::Plus => Self::Plus,
+            TokenType::Minus => Self::Minus,
+            TokenType::Identifier(v) if v == &"in" => Self::In,
+            TokenType::LeftParen | TokenType::Literal(_) | TokenType::Identifier(_) => Self::Concat,
+            TokenType::EqualEqual => Self::EqualEqual,
+            TokenType::NotEqual => Self::NotEqual,
+            TokenType::LessThan => Self::LessThan,
+            TokenType::LessEqual => Self::LessEqual,
+            TokenType::GreaterThan => Self::GreaterThan,
+            TokenType::GreaterEqual => Self::GreaterEqual,
+            TokenType::Tilde => Self::Tilde,
+            TokenType::NotTilde => Self::NotTilde,
+            TokenType::And => Self::And,
+            TokenType::Or => Self::Or,
+            TokenType::Question => todo!(), // FIXME: need to check in fn and keep parsing ternary
+            TokenType::Equal => Self::Equal,
+            TokenType::PlusEqual
+            | TokenType::MinusEqual
+            | TokenType::StarEqual
+            | TokenType::SlashEqual
+            | TokenType::PercentEqual
+            | TokenType::CarrotEqual => Self::Equal,
+            _ => unreachable!(),
+        }
+    }
 }
 
 pub struct Program<'a> {
@@ -145,14 +286,14 @@ impl<'a> Parser<'a> {
     fn action(&mut self, dest: &mut Vec<(Expression<'a>, Vec<Statement<'a>>)>) {
         let expression = self.expression();
         self.advance_one(TokenType::LeftCurly);
-        let mut statements = self.statements();
+        let statements = self.statements();
         self.advance_one(TokenType::RightCurly);
         dest.push((expression, statements));
     }
 
-    fn skip_semicolons(&mut self) {
+    fn skip_newlines_and_semicolons(&mut self) {
         // handle trailing semicolons
-        while self.check_one(TokenType::Semicolon) {
+        while self.check_one(TokenType::Semicolon) | self.check_one(TokenType::Newline) {
             self.cur.next();
         }
     }
@@ -167,7 +308,7 @@ impl<'a> Parser<'a> {
     //       expressions span until a semicolon is encountered
     //       so within expressions, newlines may be fine
     fn statement(&mut self) -> Statement<'a> {
-        self.skip_semicolons();
+        self.skip_newlines_and_semicolons();
         let ret = match self.peek() {
             None => Statement::Empty,
             Some(token) => match token.value {
@@ -272,13 +413,13 @@ impl<'a> Parser<'a> {
             },
         };
         self.skip_by(1); // advance by matched token (could be a semicolon too)
-        self.skip_semicolons();
+        self.skip_newlines_and_semicolons();
         ret
     }
 
     fn statements(&mut self) -> Vec<Statement<'a>> {
         // parse statements either until the end of the tokens or until we encounter a right curly
-        self.skip_semicolons();
+        self.skip_newlines_and_semicolons();
         let mut ret = Vec::<Statement<'a>>::new();
         while !self.peek().is_none() && !self.check_one(TokenType::RightCurly) {
             ret.push(self.statement());
@@ -288,7 +429,7 @@ impl<'a> Parser<'a> {
 
     fn boxed_statements(&mut self) -> Vec<Box<Statement<'a>>> {
         // parse statements either until the end of the tokens or until we encounter a right curly
-        self.skip_semicolons();
+        self.skip_newlines_and_semicolons();
         let mut ret = Vec::<Box<Statement<'a>>>::new();
         while !self.peek().is_none() && !self.check_one(TokenType::RightCurly) {
             ret.push(Box::new(self.statement()));
@@ -296,8 +437,197 @@ impl<'a> Parser<'a> {
         ret
     }
 
+    // FIXME: handle concat
+    fn wrap_expression(&mut self, expression: Expression<'a>) -> Expression<'a> {
+        match self.peek() {
+            None => expression,
+            Some(t) => match expression.is_precedent_to(&t.value) {
+                None => expression,
+                _ if t.value == TokenType::Equal => {
+                    self.skip_by(1);
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(expression.clone()),
+                        Box::new(self.expression()),
+                    )
+                }
+                _ if t.value == TokenType::MinusEqual => {
+                    self.skip_by(1);
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(expression.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Minus,
+                            Box::new(expression.clone()),
+                            Box::new(self.expression()),
+                        )),
+                    )
+                }
+                _ if t.value == TokenType::PlusEqual => {
+                    self.skip_by(1);
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(expression.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Plus,
+                            Box::new(expression.clone()),
+                            Box::new(self.expression()),
+                        )),
+                    )
+                }
+                _ if t.value == TokenType::StarEqual => {
+                    self.skip_by(1);
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(expression.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Multiply,
+                            Box::new(expression.clone()),
+                            Box::new(self.expression()),
+                        )),
+                    )
+                }
+                _ if t.value == TokenType::SlashEqual => {
+                    self.skip_by(1);
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(expression.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Divide,
+                            Box::new(expression.clone()),
+                            Box::new(self.expression()),
+                        )),
+                    )
+                }
+                _ if t.value == TokenType::PercentEqual => {
+                    self.skip_by(1);
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(expression.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Divide,
+                            Box::new(expression.clone()),
+                            Box::new(self.expression()),
+                        )),
+                    )
+                }
+                Some(true)
+                    if t.value == TokenType::PlusPlus || t.value == TokenType::MinusMinus =>
+                {
+                    let ret = Expression::Unary(
+                        match t.value {
+                            TokenType::PlusPlus => UnaryOperator::PostPlusPlus,
+                            TokenType::MinusMinus => UnaryOperator::PostMinusMinus,
+                            _ => unreachable!(),
+                        },
+                        Box::new(expression.clone()),
+                    );
+                    self.skip_by(1);
+                    ret
+                }
+                Some(false)
+                    if t.value == TokenType::PlusPlus || t.value == TokenType::MinusMinus =>
+                {
+                    let ret = Expression::Binary(
+                        match t.value {
+                            TokenType::PlusPlus => BinaryOperator::Plus,
+                            TokenType::MinusMinus => BinaryOperator::Minus,
+                            _ => unreachable!(),
+                        },
+                        Box::new(expression.clone()),
+                        Box::new(Expression::Literal(PrimitiveType::Integer(1))),
+                    );
+                    self.skip_by(1);
+                    ret
+                }
+                Some(true) => {
+                    let ret = Expression::Binary(
+                        BinaryOperator::convert(&t.value),
+                        Box::new(expression),
+                        Box::new(self.expression()),
+                    );
+                    self.skip_by(1);
+                    ret
+                }
+                Some(false) => {
+                    let ret = Expression::Binary(
+                        BinaryOperator::convert(&t.value),
+                        Box::new(expression),
+                        Box::new(self.expression()),
+                    );
+                    self.skip_by(1);
+                    ret
+                }
+            },
+        }
+    }
+
     fn expression(&mut self) -> Expression<'a> {
-        todo!()
+        let expression: Expression<'a>;
+        let ret = match self.peek() {
+            None => Expression::Empty,
+            Some(e) => match &e.value {
+                TokenType::Literal(value) => {
+                    let v = value.clone();
+                    self.skip_by(1);
+                    self.wrap_expression(Expression::Literal(v))
+                }
+                TokenType::LeftParen => {
+                    self.skip_by(1);
+                    expression = Expression::Grouping(Box::new(self.expression()));
+                    self.wrap_expression(expression)
+                }
+                TokenType::Dollar => {
+                    self.skip_by(1);
+                    expression = Expression::FieldVariable(Box::new(self.expression()));
+                    self.wrap_expression(expression)
+                }
+                TokenType::Identifier(name) if self.check_one(TokenType::LeftParen) => {
+                    let n = *name;
+                    self.skip_by(2);
+                    let ret = Expression::Function(n, Box::new(self.expression())); // FIXME: function call must contain a vec of expressions sep by comma instead
+                    self.advance_one(TokenType::RightParen);
+                    self.wrap_expression(ret)
+                }
+                TokenType::Identifier(_) if self.check_one(TokenType::LeftBracket) => {
+                    self.skip_by(2);
+                    let ret = Expression::ArrayVariable(Box::new(self.expression()));
+                    self.advance_one(TokenType::RightBracket);
+                    self.wrap_expression(ret)
+                }
+                TokenType::Identifier(name) => {
+                    let n = *name;
+                    self.skip_by(1);
+                    self.wrap_expression(Expression::Variable(n))
+                }
+                TokenType::Plus
+                | &TokenType::Minus
+                | &TokenType::Not
+                | &TokenType::PlusPlus
+                | &TokenType::MinusMinus => {
+                    let val = &e.value.clone();
+                    self.skip_by(1);
+                    expression = Expression::Unary(
+                        match val {
+                            &TokenType::Plus => UnaryOperator::PrePlus,
+                            &TokenType::Minus => UnaryOperator::PreMinus,
+                            &TokenType::Not => UnaryOperator::Not,
+                            &TokenType::PlusPlus => UnaryOperator::PrePlusPlus,
+                            &TokenType::MinusMinus => UnaryOperator::PreMinusMinus,
+                            _ => unreachable!(),
+                        },
+                        Box::new(self.expression()),
+                    );
+                    self.wrap_expression(expression)
+                }
+                _ => panic!(
+                    "invalid expression @ {}:{}",
+                    self.cur.next().unwrap().row,
+                    self.cur.next().unwrap().col,
+                ),
+            },
+        };
+        ret
     }
 
     pub fn parse(&mut self) -> Program {
@@ -325,5 +655,35 @@ impl<'a> Parser<'a> {
             end,
             actions,
         };
+    }
+}
+
+#[cfg(test)]
+
+mod tests {
+
+    use super::*;
+    #[test]
+    fn sample() {
+        let tokens = vec![
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::Equal, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.actions,
+            vec![(
+                Expression::Binary(
+                    BinaryOperator::Equal,
+                    Box::new(Expression::Variable("a")),
+                    Box::new(Expression::Literal(PrimitiveType::Integer(1)))
+                ),
+                Vec::<Statement>::new()
+            )]
+        )
     }
 }
