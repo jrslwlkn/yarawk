@@ -182,7 +182,7 @@ impl<'a> Lexer<'a> {
                 '\n' => {
                     match self.tokens.last() {
                         Some(t) => match t.value {
-                            TokenType::Semicolon | TokenType::LeftParen => {}
+                            TokenType::Semicolon | TokenType::LeftParen | TokenType::LeftCurly => {}
                             _ => {
                                 self.emit(TokenType::Newline, self.col, 1);
                                 self.advance(0, true);
