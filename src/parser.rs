@@ -1,4 +1,4 @@
-use std::{mem::discriminant, slice::Iter};
+use std::slice::Iter;
 
 use crate::token::{PrimitiveType, Token, TokenType};
 
@@ -38,7 +38,7 @@ pub enum Expression<'a> {
     FieldVariable(Box<Expression<'a>>),
     ArrayVariable(Box<Expression<'a>>),
     Grouping(Box<Expression<'a>>),
-    Function(&'a str, Box<Expression<'a>>),
+    Function(&'a str, Box<Vec<Expression<'a>>>),
     Unary(UnaryOperator, Box<Expression<'a>>),
     Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
 }
@@ -209,10 +209,10 @@ impl<'a> Parser<'a> {
 
     fn check(&self, types: Vec<TokenType<'a>>) -> bool {
         let mut _cur = self.cur.clone();
-        for token in types {
-            match (_cur.next(), token) {
+        for t in types {
+            match (_cur.next(), t) {
                 (None, _) => return false,
-                (Some(lhs), rhs) if discriminant(&lhs.value) != discriminant(&rhs) => return false,
+                (Some(lhs), rhs) if lhs.value != rhs => return false,
                 _ => {}
             }
         }
@@ -227,16 +227,18 @@ impl<'a> Parser<'a> {
         let mut prev: Option<&Token> = None;
         for token in types {
             let val = self.cur.next();
-            match (val, token) {
+            match (val, &token) {
                 (None, _) => panic!(
-                    "expected: `{{`, @ {}:{}",
-                    prev.unwrap().row,
-                    prev.unwrap().col,
+                    "expected: `{:?}`, @ {}:{}",
+                    &token,
+                    prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).row,
+                    prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).col,
                 ),
-                (Some(lhs), rhs) if lhs.value != rhs => panic!(
-                    "expected: `{{`, @ {}:{}",
-                    prev.unwrap().row,
-                    prev.unwrap().col,
+                (Some(lhs), rhs) if lhs.value != *rhs => panic!(
+                    "expected: `{:?}`, @ {}:{}",
+                    &token,
+                    prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).row,
+                    prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).col,
                 ),
                 _ => {}
             }
@@ -273,9 +275,18 @@ impl<'a> Parser<'a> {
         }
         self.advance(vec![TokenType::Identifier(""), TokenType::LeftParen]);
         let mut statements = Vec::<Statement<'a>>::new();
+        let mut is_first = true;
         while !self.peek().is_none() && !self.check_one(TokenType::RightParen) {
+            if !is_first {
+                self.advance_one(TokenType::Comma);
+            }
             // parse parameters as variable declarations in function scope
-            todo!();
+            statements.push(Statement::Expression(Expression::Binary(
+                BinaryOperator::Equal,
+                Box::new(self.expression()),
+                Box::new(Expression::Literal(PrimitiveType::Integer(0))),
+            )));
+            is_first = false;
         }
         self.advance(vec![TokenType::RightParen, TokenType::LeftCurly]);
         statements.extend(self.statements());
@@ -312,13 +323,34 @@ impl<'a> Parser<'a> {
         let ret = match self.peek() {
             None => Statement::Empty,
             Some(token) => match token.value {
-                TokenType::Break => Statement::Break,
-                TokenType::Continue => Statement::Continue,
-                TokenType::Next => Statement::Next,
-                TokenType::Return => Statement::Return(self.expression()),
-                TokenType::Exit => Statement::Exit(self.expression()),
-                TokenType::Print => Statement::Print(self.expression()),
-                TokenType::Delete => Statement::Delete(self.expression()),
+                TokenType::Break => {
+                    self.skip_by(1);
+                    Statement::Break
+                }
+                TokenType::Continue => {
+                    self.skip_by(1);
+                    Statement::Continue
+                }
+                TokenType::Next => {
+                    self.skip_by(1);
+                    Statement::Next
+                }
+                TokenType::Return => {
+                    self.skip_by(1);
+                    Statement::Return(self.expression())
+                }
+                TokenType::Exit => {
+                    self.skip_by(1);
+                    Statement::Exit(self.expression())
+                }
+                TokenType::Print => {
+                    self.skip_by(1);
+                    Statement::Print(self.expression())
+                }
+                TokenType::Delete => {
+                    self.skip_by(1);
+                    Statement::Delete(self.expression())
+                }
                 TokenType::If => {
                     self.advance(vec![TokenType::If, TokenType::LeftParen]);
                     let cond = self.expression();
@@ -412,7 +444,6 @@ impl<'a> Parser<'a> {
                 _ => Statement::Expression(self.expression()), // FIXME: io expressions ?
             },
         };
-        self.skip_by(1); // advance by matched token (could be a semicolon too)
         self.skip_newlines_and_semicolons();
         ret
     }
@@ -422,7 +453,11 @@ impl<'a> Parser<'a> {
         self.skip_newlines_and_semicolons();
         let mut ret = Vec::<Statement<'a>>::new();
         while !self.peek().is_none() && !self.check_one(TokenType::RightCurly) {
-            ret.push(self.statement());
+            let s = self.statement();
+            if ret.is_empty() || s != Statement::Expression(Expression::Empty) {
+                // no need to keep trailing empty expressions
+                ret.push(s);
+            }
         }
         ret
     }
@@ -437,7 +472,6 @@ impl<'a> Parser<'a> {
         ret
     }
 
-    // FIXME: handle concat
     fn wrap_expression(&mut self, expression: Expression<'a>) -> Expression<'a> {
         match self.peek() {
             None => expression,
@@ -582,14 +616,27 @@ impl<'a> Parser<'a> {
                     expression = Expression::FieldVariable(Box::new(self.expression()));
                     self.wrap_expression(expression)
                 }
-                TokenType::Identifier(name) if self.check_one(TokenType::LeftParen) => {
+                TokenType::Identifier(name)
+                    if self.check(vec![TokenType::Identifier(""), TokenType::LeftParen]) =>
+                {
                     let n = *name;
                     self.skip_by(2);
-                    let ret = Expression::Function(n, Box::new(self.expression())); // FIXME: function call must contain a vec of expressions sep by comma instead
+                    let mut args = Vec::<Expression>::new();
+                    let mut is_first = true;
+                    while !self.peek().is_none() && !self.check_one(TokenType::RightParen) {
+                        if !is_first {
+                            self.advance_one(TokenType::Comma);
+                        }
+                        args.push(self.expression());
+                        is_first = false;
+                    }
+                    let ret = Expression::Function(n, Box::new(args));
                     self.advance_one(TokenType::RightParen);
                     self.wrap_expression(ret)
                 }
-                TokenType::Identifier(_) if self.check_one(TokenType::LeftBracket) => {
+                TokenType::Identifier(_)
+                    if self.check(vec![TokenType::Identifier(""), TokenType::LeftBracket]) =>
+                {
                     self.skip_by(2);
                     let ret = Expression::ArrayVariable(Box::new(self.expression()));
                     self.advance_one(TokenType::RightBracket);
@@ -620,11 +667,7 @@ impl<'a> Parser<'a> {
                     );
                     self.wrap_expression(expression)
                 }
-                _ => panic!(
-                    "invalid expression @ {}:{}",
-                    self.cur.next().unwrap().row,
-                    self.cur.next().unwrap().col,
-                ),
+                _ => Expression::Empty,
             },
         };
         ret
@@ -661,8 +704,8 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 
 mod tests {
-
     use super::*;
+
     #[test]
     fn sample() {
         let tokens = vec![
@@ -683,6 +726,55 @@ mod tests {
                     Box::new(Expression::Literal(PrimitiveType::Integer(1)))
                 ),
                 Vec::<Statement>::new()
+            )]
+        )
+    }
+
+    #[test]
+    fn function() {
+        let tokens = vec![
+            // function hello(a, b) { hello(1,2) }
+            Token::new(TokenType::Function, 0, 0),
+            Token::new(TokenType::Identifier("hello"), 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::Comma, 0, 0),
+            Token::new(TokenType::Identifier("b"), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Identifier("hello"), 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::Comma, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(2)), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.functions,
+            vec![(
+                "hello",
+                vec![
+                    Statement::Expression(Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(Expression::Variable("a")),
+                        Box::new(Expression::Literal(PrimitiveType::Integer(0)))
+                    )),
+                    Statement::Expression(Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(Expression::Variable("b")),
+                        Box::new(Expression::Literal(PrimitiveType::Integer(0)))
+                    )),
+                    Statement::Expression(Expression::Function(
+                        "hello",
+                        Box::new(vec![
+                            Expression::Literal(PrimitiveType::Integer(1)),
+                            Expression::Literal(PrimitiveType::Integer(2))
+                        ])
+                    ))
+                ]
             )]
         )
     }
