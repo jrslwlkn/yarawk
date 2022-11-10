@@ -35,7 +35,6 @@ pub enum TokenType<'a> {
     RightParen,
     Semicolon,
     Colon,
-    Dot,
     Comma,
 
     Equal,
@@ -115,7 +114,6 @@ impl<'a> PartialEq for TokenType<'a> {
             (Self::RightParen, Self::RightParen) => true,
             (Self::Semicolon, Self::Semicolon) => true,
             (Self::Colon, Self::Colon) => true,
-            (Self::Dot, Self::Dot) => true,
             (Self::Comma, Self::Comma) => true,
             (Self::Equal, Self::Equal) => true,
             (Self::EqualEqual, Self::EqualEqual) => true,

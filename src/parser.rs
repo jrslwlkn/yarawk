@@ -32,6 +32,8 @@ pub enum Statement<'a> {
         Vec<Box<Statement<'a>>>,
     ),
 }
+
+#[derive(Debug)]
 pub struct Program<'a> {
     functions: Vec<(&'a str, Vec<Statement<'a>>)>,
     begin: Vec<Statement<'a>>,
@@ -79,16 +81,14 @@ impl<'a> Parser<'a> {
             let val = self.cur.next();
             match (val, &token) {
                 (None, _) => panic!(
-                    "expected: `{:?}`, @ {}:{}",
+                    "expected: {:?} @ {}:{}",
                     &token,
-                    prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).row,
+                    prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).row, // FIXME:
                     prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).col,
                 ),
                 (Some(lhs), rhs) if lhs.value != *rhs => panic!(
-                    "expected: `{:?}`, @ {}:{}",
-                    &token,
-                    prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).row,
-                    prev.unwrap_or(&Token::new(TokenType::Comma, 0, 0)).col,
+                    "expected: {:?}, received: {:?}, @ {}:{}",
+                    &token, lhs.value, lhs.row, lhs.col
                 ),
                 _ => {}
             }
@@ -146,6 +146,9 @@ impl<'a> Parser<'a> {
 
     fn action(&mut self, dest: &mut Vec<(Expression<'a>, Vec<Statement<'a>>)>) {
         let expression = self.expression();
+        if expression == Expression::Empty {
+            return;
+        }
         self.advance_one(TokenType::LeftCurly);
         let statements = self.statements();
         self.advance_one(TokenType::RightCurly);
@@ -430,16 +433,19 @@ impl<'a> Parser<'a> {
                         Box::new(expression),
                         Box::new(self.expression()),
                     );
-                    self.skip_by(1);
                     ret
                 }
+                // TODO: if cur expr precedence is lower than next operator,
+                //       extract the rhs from cur expr
+                //       and make a new binary expr,
+                //       with lhs = cur expr lhs,
+                //       and rhs = new op expr
                 Some(false) => {
                     let ret = Expression::Binary(
                         BinaryOperator::convert(&t.value),
                         Box::new(expression),
                         Box::new(self.expression()),
                     );
-                    self.skip_by(1);
                     ret
                 }
             },
@@ -480,8 +486,8 @@ impl<'a> Parser<'a> {
                         args.push(self.expression());
                         is_first = false;
                     }
-                    let ret = Expression::Function(n, Box::new(args));
                     self.advance_one(TokenType::RightParen);
+                    let ret = Expression::Function(n, Box::new(args));
                     self.wrap_expression(ret)
                 }
                 TokenType::Identifier(_)
@@ -517,12 +523,10 @@ impl<'a> Parser<'a> {
                     );
                     self.wrap_expression(expression)
                 }
-                TokenType::Semicolon => Expression::Empty,
+                TokenType::Semicolon | TokenType::Eof => Expression::Empty,
                 t => panic!(
                     "expected: expression, received {:?} @ {}:{}",
-                    t,
-                    self.cur.clone().next().unwrap().row,
-                    self.cur.clone().next().unwrap().col
+                    t, e.row, e.col
                 ),
             },
         };
@@ -540,6 +544,7 @@ impl<'a> Parser<'a> {
             match cur.peek() {
                 None => break,
                 Some(token) => match token.value {
+                    TokenType::Eof => break,
                     TokenType::Begin => self.begin(&mut begin),
                     TokenType::End => self.end(&mut end),
                     TokenType::Function => self.function(&mut functions),
@@ -648,6 +653,39 @@ mod tests {
                     ))
                 ]
             )]
+        )
+    }
+
+    #[test]
+    fn func1() {
+        // BEGIN { emitop("jump", "_"tag2) }
+        let tokens = vec![
+            Token::new(TokenType::Begin, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Identifier("emitop"), 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("jump")), 0, 0),
+            Token::new(TokenType::Comma, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("_")), 0, 0),
+            Token::new(TokenType::Identifier("tag2"), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.begin,
+            vec![Statement::Expression(Expression::Function(
+                "emitop",
+                Box::new(vec![
+                    Expression::Literal(PrimitiveType::String("jump")),
+                    Expression::Binary(
+                        BinaryOperator::Concat,
+                        Box::new(Expression::Literal(PrimitiveType::String("_"))),
+                        Box::new(Expression::Variable("tag2"))
+                    )
+                ])
+            ))]
         )
     }
 }

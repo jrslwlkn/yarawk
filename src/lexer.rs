@@ -33,6 +33,21 @@ impl<'a> Lexer<'a> {
         &self.input[self.pos..self.pos + value.len()] == value
     }
 
+    fn peek_ws(&self, value: &str) -> bool {
+        if self.pos + value.len() > self.input.len() {
+            return false;
+        }
+        match self.chars.get(self.pos + value.len()) {
+            None => {}
+            Some(c) if c.is_whitespace() => {}
+            Some(c) => match *c {
+                ';' | '(' | '{' => {}
+                _ => return false,
+            },
+        }
+        &self.input[self.pos..self.pos + value.len()] == value
+    }
+
     fn peek_next(&self) -> char {
         let val = self.chars.get(self.pos + 1);
         match val {
@@ -63,6 +78,9 @@ impl<'a> Lexer<'a> {
             }
             let cur = self.chars.get(self.pos).unwrap().to_owned();
             match cur {
+                '\\' if self.peek_next() == '\n' => {
+                    self.advance(2, true);
+                }
                 '{' => self.emit(TokenType::LeftCurly, self.col, 1),
                 '}' => self.emit(TokenType::RightCurly, self.col, 1),
                 '(' => self.emit(TokenType::LeftParen, self.col, 1),
@@ -191,20 +209,20 @@ impl<'a> Lexer<'a> {
                 '>' => self.emit(TokenType::GreaterThan, self.col, 1),
                 '&' if self.peek("&&") => self.emit(TokenType::And, self.col, 2),
                 '|' if self.peek("||") => self.emit(TokenType::Or, self.col, 2),
-                'B' if self.peek("BEGIN") => self.emit(TokenType::Begin, self.col, 5),
-                'E' if self.peek("END") => self.emit(TokenType::End, self.col, 3),
-                'd' if self.peek("delete") => self.emit(TokenType::Delete, self.col, 6),
-                'e' if self.peek("exit") => self.emit(TokenType::Exit, self.col, 4),
-                'f' if self.peek("function") => self.emit(TokenType::Function, self.col, 8),
-                'i' if self.peek("if") => self.emit(TokenType::If, self.col, 2),
-                'e' if self.peek("else") => self.emit(TokenType::Else, self.col, 4),
-                'b' if self.peek("break") => self.emit(TokenType::Break, self.col, 5),
-                'c' if self.peek("continue") => self.emit(TokenType::Continue, self.col, 8),
-                'r' if self.peek("return") => self.emit(TokenType::Return, self.col, 6),
-                'd' if self.peek("do") => self.emit(TokenType::Do, self.col, 2),
-                'w' if self.peek("while") => self.emit(TokenType::While, self.col, 5),
-                'f' if self.peek("for") => self.emit(TokenType::For, self.col, 3),
-                'i' if self.peek("in") => self.emit(TokenType::In, self.col, 2),
+                'B' if self.peek_ws("BEGIN") => self.emit(TokenType::Begin, self.col, 5),
+                'E' if self.peek_ws("END") => self.emit(TokenType::End, self.col, 3),
+                'd' if self.peek_ws("delete") => self.emit(TokenType::Delete, self.col, 6),
+                'e' if self.peek_ws("exit") => self.emit(TokenType::Exit, self.col, 4),
+                'f' if self.peek_ws("function") => self.emit(TokenType::Function, self.col, 8),
+                'i' if self.peek_ws("if") => self.emit(TokenType::If, self.col, 2),
+                'e' if self.peek_ws("else") => self.emit(TokenType::Else, self.col, 4),
+                'b' if self.peek_ws("break") => self.emit(TokenType::Break, self.col, 5),
+                'c' if self.peek_ws("continue") => self.emit(TokenType::Continue, self.col, 8),
+                'r' if self.peek_ws("return") => self.emit(TokenType::Return, self.col, 6),
+                'd' if self.peek_ws("do") => self.emit(TokenType::Do, self.col, 2),
+                'w' if self.peek_ws("while") => self.emit(TokenType::While, self.col, 5),
+                'f' if self.peek_ws("for") => self.emit(TokenType::For, self.col, 3),
+                'i' if self.peek_ws("in") => self.emit(TokenType::In, self.col, 2),
                 '\n' => {
                     match self.tokens.last() {
                         Some(t) => match t.value {
@@ -239,7 +257,6 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
-                '\\' if self.peek("\n") => self.advance(2, true),
                 '\'' | '\"' => {
                     // string literals
                     let quote = cur.to_owned();
@@ -318,7 +335,6 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
-                '.' => self.emit(TokenType::Dot, self.col, 1),
                 ',' => self.emit(TokenType::Comma, self.col, 1),
                 _ => self.advance(1, false),
             }
@@ -521,6 +537,24 @@ while (1) {
                 1,
             ),
             Token::new(TokenType::Eof, 3, 4),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn line_cont_expr() {
+        let source = r#"function a( \
+\
+)"#
+        .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(TokenType::Function, 1, 1),
+            Token::new(TokenType::Identifier("a"), 1, 10),
+            Token::new(TokenType::LeftParen, 1, 11),
+            Token::new(TokenType::RightParen, 3, 1),
+            Token::new(TokenType::Eof, 3, 2),
         ];
         assert_eq!(lhs, rhs);
     }
