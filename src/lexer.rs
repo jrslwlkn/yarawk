@@ -103,21 +103,41 @@ impl<'a> Lexer<'a> {
                     // when matched first Slash, go till the end of the line
                     let mut pair_idx = -1;
                     let mut cur_pos = self.pos + 1;
+                    let mut newlines = 0;
+                    let mut cur_col = 1;
                     loop {
                         match self.chars.get(cur_pos) {
                             None => break,
                             Some(val) => match val {
-                                '\n' => break,
+                                '\\' if !self.chars.get(cur_pos + 1).is_none()
+                                    && *self.chars.get(cur_pos + 1).unwrap() == '\n' =>
+                                {
+                                    cur_pos += 2;
+                                    newlines += 1;
+                                    cur_col = 1;
+                                }
                                 '\\' if !self.chars.get(cur_pos + 1).is_none()
                                     && *self.chars.get(cur_pos + 1).unwrap() == '/' =>
                                 {
                                     cur_pos += 2;
+                                    cur_col += 2;
+                                }
+                                '\n' => {
+                                    cur_pos += 1;
+                                    cur_col = 1;
+                                    newlines += 1;
+                                    break;
                                 }
                                 '/' => {
                                     pair_idx = cur_pos as i64;
+                                    cur_pos += 1;
+                                    cur_col += 1;
                                     break;
                                 }
-                                _ => cur_pos += 1,
+                                _ => {
+                                    cur_pos += 1;
+                                    cur_col += 1;
+                                }
                             },
                         }
                     }
@@ -126,14 +146,18 @@ impl<'a> Lexer<'a> {
                         // before: LeftParen, Equal, EqualEqual, NotEqual, Tilde, NotTilde, Nothing
                         match self.tokens.last() {
                             None => {
+                                // remove line splits within the regex
+                                let val =
+                                    &self.input[self.pos + 1..cur_pos - 1].replace("\\\n", "");
                                 self.emit(
                                     TokenType::Literal(PrimitiveType::Pattern(
-                                        Regex::from_str(&self.input[self.pos + 1..cur_pos])
-                                            .unwrap(),
+                                        Regex::from_str(val).unwrap(),
                                     )),
                                     self.col,
                                     pair_idx as usize - self.pos + 1,
                                 );
+                                self.row += newlines;
+                                self.col = if newlines > 0 { cur_col } else { cur_col + 1 };
                             }
                             Some(t) => match t.value {
                                 TokenType::LeftParen
@@ -144,12 +168,14 @@ impl<'a> Lexer<'a> {
                                 | TokenType::NotTilde => {
                                     self.emit(
                                         TokenType::Literal(PrimitiveType::Pattern(
-                                            Regex::from_str(&self.input[self.pos + 1..cur_pos])
+                                            Regex::from_str(&self.input[self.pos + 1..cur_pos - 1])
                                                 .unwrap(),
                                         )),
                                         self.col,
                                         pair_idx as usize - self.pos + 1,
                                     );
+                                    self.row += newlines;
+                                    self.col = if newlines > 0 { cur_col } else { cur_col + 1 };
                                 }
                                 _ => self.emit(TokenType::Slash, self.col, 1),
                             },
@@ -182,7 +208,15 @@ impl<'a> Lexer<'a> {
                 '\n' => {
                     match self.tokens.last() {
                         Some(t) => match t.value {
-                            TokenType::Semicolon | TokenType::LeftParen | TokenType::LeftCurly => {}
+                            TokenType::Semicolon
+                            | TokenType::Comma
+                            | TokenType::LeftCurly
+                            | TokenType::Question
+                            | TokenType::Colon
+                            | TokenType::Or
+                            | TokenType::And
+                            | TokenType::Do
+                            | TokenType::Else => {}
                             _ => {
                                 self.emit(TokenType::Newline, self.col, 1);
                                 self.advance(0, true);
@@ -193,8 +227,8 @@ impl<'a> Lexer<'a> {
                     }
                     self.advance(1, true);
                 }
-                '#' | '\\' => {
-                    // ignore comments and line splits
+                '#' => {
+                    // ignore comments
                     loop {
                         match self.peek_next() {
                             '\n' => {
@@ -205,6 +239,7 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
+                '\\' if self.peek("\n") => self.advance(2, true),
                 '\'' | '\"' => {
                     // string literals
                     let quote = cur.to_owned();
@@ -467,6 +502,25 @@ while (1) {
             Token::new(TokenType::Slash, 2, 10),
             Token::new(TokenType::Literal(PrimitiveType::Integer(4)), 2, 11),
             Token::new(TokenType::Eof, 2, 12),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn line_cont_regex() {
+        let source = r#"/a\
+ b\
+ c/"#
+        .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(
+                TokenType::Literal(PrimitiveType::Pattern(Regex::new("a b c").unwrap())),
+                1,
+                1,
+            ),
+            Token::new(TokenType::Eof, 3, 4),
         ];
         assert_eq!(lhs, rhs);
     }
