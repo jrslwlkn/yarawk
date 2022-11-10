@@ -517,7 +517,13 @@ impl<'a> Parser<'a> {
                     );
                     self.wrap_expression(expression)
                 }
-                _ => Expression::Empty,
+                TokenType::Semicolon => Expression::Empty,
+                t => panic!(
+                    "expected: expression, received {:?} @ {}:{}",
+                    t,
+                    self.cur.clone().next().unwrap().row,
+                    self.cur.clone().next().unwrap().col
+                ),
             },
         };
         ret
@@ -578,6 +584,22 @@ mod tests {
                 Vec::<Statement>::new()
             )]
         )
+    }
+
+    #[test]
+    #[should_panic(expected = "expected: expression, received Equal @ 1:1")]
+    fn unfinished_expr() {
+        let tokens = vec![
+            Token::new(TokenType::Begin, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Equal, 1, 1),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let _prog = p.parse();
     }
 
     #[test]
