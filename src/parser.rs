@@ -14,7 +14,7 @@ pub enum Statement<'a> {
     Next,
     Expression(Expression<'a>),
     IoStatement, // TODO: figure out
-    Print(Expression<'a>),
+    Print(Vec<Expression<'a>>),
     Exit(Expression<'a>),
     Return(Expression<'a>),
     Delete(Expression<'a>),
@@ -145,9 +145,11 @@ impl<'a> Parser<'a> {
     }
 
     fn action(&mut self, dest: &mut Vec<(Expression<'a>, Vec<Statement<'a>>)>) {
-        let expression = self.expression();
-        if expression == Expression::Empty {
-            return;
+        let expression: Expression;
+        if self.check_one(TokenType::LeftCurly) {
+            expression = Expression::Empty;
+        } else {
+            expression = self.expression();
         }
         self.advance_one(TokenType::LeftCurly);
         let statements = self.statements();
@@ -168,9 +170,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // TODO: statements span until a semicolon or newline is encountered
-    //       expressions span until a semicolon is encountered
-    //       so within expressions, newlines may be fine
     fn statement(&mut self) -> Statement<'a> {
         self.skip_newlines_and_semicolons();
         let ret = match self.peek() {
@@ -198,7 +197,19 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::Print => {
                     self.skip_by(1);
-                    Statement::Print(self.expression())
+                    let mut args = Vec::<Expression>::new();
+                    let mut is_first = true;
+                    while !self.peek().is_none()
+                        && !self.check_one(TokenType::Semicolon)
+                        && !self.check_one(TokenType::Newline)
+                    {
+                        if !is_first {
+                            self.advance_one(TokenType::Comma);
+                        }
+                        is_first = false;
+                        args.push(self.expression());
+                    }
+                    Statement::Print(args)
                 }
                 TokenType::Delete => {
                     self.skip_by(1);
@@ -605,6 +616,31 @@ mod tests {
         ];
         let mut p = Parser::new(&tokens);
         let _prog = p.parse();
+    }
+
+    #[test]
+    fn print() {
+        let tokens = vec![
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(TokenType::Comma, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("world")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.actions,
+            vec![(
+                Expression::Empty,
+                vec![Statement::Print(vec![
+                    Expression::Literal(PrimitiveType::String("hello")),
+                    Expression::Literal(PrimitiveType::String("world"))
+                ]),]
+            )],
+        )
     }
 
     #[test]
