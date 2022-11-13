@@ -1,7 +1,7 @@
-use std::slice::Iter;
-
 use crate::{
-    parser_expression::{BinaryOperator, Expression, UnaryOperator},
+    parser_expression::{
+        BinaryOperator, Expression, ExpressionItem, ExpressionTrace, UnaryOperator,
+    },
     token::{PrimitiveType, Token, TokenType},
 };
 
@@ -179,7 +179,7 @@ impl<'a> Parser<'a> {
             // parse parameters as variable declarations in function scope
             statements.push(Statement::Expression(Expression::Binary(
                 BinaryOperator::Equal,
-                Box::new(self.expression()),
+                Box::new(self.expression(ExpressionTrace::new())),
                 Box::new(Expression::Literal(PrimitiveType::Integer(0))),
             )));
             is_first = false;
@@ -195,7 +195,7 @@ impl<'a> Parser<'a> {
         if self.check_one(TokenType::LeftCurly) {
             expression = Expression::Empty;
         } else {
-            expression = self.expression();
+            expression = self.expression(ExpressionTrace::new());
         }
         self.advance_one(TokenType::LeftCurly);
         let statements = self.statements();
@@ -214,18 +214,6 @@ impl<'a> Parser<'a> {
         for _ in 0..num {
             self.tokens.next();
         }
-    }
-
-    fn last_operatable_token(&self) -> TokenType {
-        // let mut cur = self.cur.clone().next_back();
-        todo!()
-        // loop {
-        //     match cur {
-        //         None => return cur.next(),
-        //         _ => todo!(),
-        //     }
-        // }
-        // self.peek().unwrap().value.clone() //TODO
     }
 
     fn statement(&mut self) -> Statement<'a> {
@@ -247,11 +235,11 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::Return => {
                     self.skip_by(1);
-                    Statement::Return(self.expression())
+                    Statement::Return(self.expression(ExpressionTrace::new()))
                 }
                 TokenType::Exit => {
                     self.skip_by(1);
-                    Statement::Exit(self.expression())
+                    Statement::Exit(self.expression(ExpressionTrace::new()))
                 }
                 TokenType::Print => {
                     self.skip_by(1);
@@ -260,22 +248,23 @@ impl<'a> Parser<'a> {
                     while !self.tokens.peek_next().is_none()
                         && !self.check_one(TokenType::Semicolon)
                         && !self.check_one(TokenType::Newline)
+                        && !self.check_one(TokenType::RightCurly)
                     {
                         if !is_first {
                             self.advance_one(TokenType::Comma);
                         }
                         is_first = false;
-                        args.push(self.expression());
+                        args.push(self.expression(ExpressionTrace::new()));
                     }
                     Statement::Print(args)
                 }
                 TokenType::Delete => {
                     self.skip_by(1);
-                    Statement::Delete(self.expression())
+                    Statement::Delete(self.expression(ExpressionTrace::new()))
                 }
                 TokenType::If => {
                     self.advance(vec![TokenType::If, TokenType::LeftParen]);
-                    let cond = self.expression();
+                    let cond = self.expression(ExpressionTrace::new());
                     self.advance_one(TokenType::RightParen);
                     let mut ifs = Vec::<Box<Statement<'a>>>::new();
                     let mut elses = Vec::<Box<Statement<'a>>>::new();
@@ -308,13 +297,13 @@ impl<'a> Parser<'a> {
                         statements.extend(self.boxed_statements());
                     }
                     self.advance(vec![TokenType::While, TokenType::LeftParen]);
-                    let cond = self.expression();
+                    let cond = self.expression(ExpressionTrace::new());
                     self.advance_one(TokenType::RightParen);
                     Statement::DoWhile(statements, cond)
                 }
                 TokenType::While => {
                     self.advance(vec![TokenType::While, TokenType::LeftParen]);
-                    let cond = self.expression();
+                    let cond = self.expression(ExpressionTrace::new());
                     self.advance_one(TokenType::RightParen);
                     let mut statements = Vec::<Box<Statement<'a>>>::new();
                     if self.check_one(TokenType::LeftCurly) {
@@ -328,17 +317,17 @@ impl<'a> Parser<'a> {
                 }
                 TokenType::For => {
                     self.advance(vec![TokenType::For, TokenType::LeftParen]);
-                    let expression1 = self.expression();
+                    let expression1 = self.expression(ExpressionTrace::new());
                     let expression2: Expression;
                     let mut expression3: Option<Expression> = None;
                     if self.check_one(TokenType::Semicolon) {
                         self.advance_one(TokenType::Semicolon);
-                        expression2 = self.expression();
+                        expression2 = self.expression(ExpressionTrace::new());
                         self.advance_one(TokenType::Semicolon);
-                        expression3 = Some(self.expression());
+                        expression3 = Some(self.expression(ExpressionTrace::new()));
                     } else if self.check_one(TokenType::In) {
                         self.advance_one(TokenType::In);
-                        expression2 = self.expression();
+                        expression2 = self.expression(ExpressionTrace::new());
                     } else {
                         panic!(
                             "expected: `;` or `in` @ {}:{}",
@@ -363,7 +352,7 @@ impl<'a> Parser<'a> {
                     self.advance_one(TokenType::RightCurly);
                     block
                 }
-                _ => Statement::Expression(self.expression()), // FIXME: io expressions ?
+                _ => Statement::Expression(self.expression(ExpressionTrace::new())), // FIXME: io expressions ?
             },
         };
         self.skip_newlines_and_semicolons();
@@ -394,160 +383,176 @@ impl<'a> Parser<'a> {
         ret
     }
 
-    fn wrap_expression(&mut self, expression: Expression<'a>) -> Expression<'a> {
+    fn extended_expression(
+        &mut self,
+        expression: Expression<'a>,
+        trace: &mut ExpressionTrace<'a>,
+    ) -> Expression<'a> {
+        trace.push(ExpressionItem::Expression(expression));
         match self.tokens.peek_next() {
-            None => expression,
-            Some(t) => match expression.is_precedent_to(&t.value) {
-                None => expression,
-                _ if t.value == TokenType::Equal => {
+            None => trace.reduce(255).last().unwrap(),
+            Some(t) => match t.value {
+                TokenType::Semicolon | TokenType::Newline => {
                     self.skip_by(1);
-                    Expression::Binary(
-                        BinaryOperator::Equal,
-                        Box::new(expression.clone()),
-                        Box::new(self.expression()),
-                    )
+                    trace.reduce(255).last().unwrap()
                 }
-                _ if t.value == TokenType::MinusEqual => {
+                // FIXME: things like (a++ + 5) probably won't work
+                TokenType::PlusPlus => {
                     self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
                     Expression::Binary(
                         BinaryOperator::Equal,
-                        Box::new(expression.clone()),
-                        Box::new(Expression::Binary(
-                            BinaryOperator::Minus,
-                            Box::new(expression.clone()),
-                            Box::new(self.expression()),
-                        )),
-                    )
-                }
-                _ if t.value == TokenType::PlusEqual => {
-                    self.skip_by(1);
-                    Expression::Binary(
-                        BinaryOperator::Equal,
-                        Box::new(expression.clone()),
+                        Box::new(lhs.clone()),
                         Box::new(Expression::Binary(
                             BinaryOperator::Plus,
-                            Box::new(expression.clone()),
-                            Box::new(self.expression()),
-                        )),
-                    )
-                }
-                _ if t.value == TokenType::StarEqual => {
-                    self.skip_by(1);
-                    Expression::Binary(
-                        BinaryOperator::Equal,
-                        Box::new(expression.clone()),
-                        Box::new(Expression::Binary(
-                            BinaryOperator::Multiply,
-                            Box::new(expression.clone()),
-                            Box::new(self.expression()),
-                        )),
-                    )
-                }
-                _ if t.value == TokenType::SlashEqual => {
-                    self.skip_by(1);
-                    Expression::Binary(
-                        BinaryOperator::Equal,
-                        Box::new(expression.clone()),
-                        Box::new(Expression::Binary(
-                            BinaryOperator::Divide,
-                            Box::new(expression.clone()),
-                            Box::new(self.expression()),
-                        )),
-                    )
-                }
-                _ if t.value == TokenType::PercentEqual => {
-                    self.skip_by(1);
-                    Expression::Binary(
-                        BinaryOperator::Equal,
-                        Box::new(expression.clone()),
-                        Box::new(Expression::Binary(
-                            BinaryOperator::Divide,
-                            Box::new(expression.clone()),
-                            Box::new(self.expression()),
-                        )),
-                    )
-                }
-                Some(true)
-                    if t.value == TokenType::PlusPlus || t.value == TokenType::MinusMinus =>
-                {
-                    let val = t.value.clone();
-                    if BinaryOperator::convert(&val) != BinaryOperator::Concat {
-                        self.skip_by(1);
-                    }
-                    Expression::Unary(
-                        // FIXME: this is supposed to be an assignment
-                        match val {
-                            TokenType::PlusPlus => UnaryOperator::PostPlusPlus,
-                            TokenType::MinusMinus => UnaryOperator::PostMinusMinus,
-                            _ => unreachable!(),
-                        },
-                        Box::new(expression.clone()),
-                    )
-                }
-                Some(false)
-                    if t.value == TokenType::PlusPlus || t.value == TokenType::MinusMinus =>
-                {
-                    let val = t.value.clone();
-                    if BinaryOperator::convert(&val) != BinaryOperator::Concat {
-                        self.skip_by(1);
-                    }
-                    Expression::Binary(
-                        BinaryOperator::Equal,
-                        Box::new(expression.clone()),
-                        Box::new(Expression::Binary(
-                            match val {
-                                TokenType::PlusPlus => BinaryOperator::Plus,
-                                TokenType::MinusMinus => BinaryOperator::Minus,
-                                _ => unreachable!(),
-                            },
-                            Box::new(expression.clone()),
+                            Box::new(lhs.clone()),
                             Box::new(Expression::Literal(PrimitiveType::Integer(1))),
                         )),
                     )
                 }
-                Some(true) => {
-                    let val = t.value.clone();
-                    if BinaryOperator::convert(&val) != BinaryOperator::Concat {
-                        self.skip_by(1);
-                    }
+                TokenType::MinusMinus => {
+                    self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
                     Expression::Binary(
-                        BinaryOperator::convert(&val),
-                        Box::new(expression),
-                        Box::new(self.expression()),
+                        BinaryOperator::Equal,
+                        Box::new(lhs.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Minus,
+                            Box::new(lhs.clone()),
+                            Box::new(Expression::Literal(PrimitiveType::Integer(1))),
+                        )),
                     )
                 }
-                //       if cur expr precedence is lower than next operator,
-                //       extract the rhs from cur expr
-                //       and make a new binary expr,
-                //       with lhs = cur expr lhs,
-                //       and rhs = new op expr
-                Some(false) => {
-                    let val = t.value.clone();
-                    if BinaryOperator::convert(&val) != BinaryOperator::Concat {
+                TokenType::Equal => {
+                    self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(lhs),
+                        Box::new(self.expression(ExpressionTrace::new())),
+                    )
+                }
+                // FIXME:: x= should be creating their own stack, so
+                //         a /= 5^42
+                //         is computed correctly
+                TokenType::MinusEqual => {
+                    self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(lhs.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Minus,
+                            Box::new(lhs.clone()),
+                            Box::new(self.expression(ExpressionTrace::new())),
+                        )),
+                    )
+                }
+                TokenType::PlusEqual => {
+                    self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(lhs.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Plus,
+                            Box::new(lhs.clone()),
+                            Box::new(self.expression(ExpressionTrace::new())),
+                        )),
+                    )
+                }
+                TokenType::StarEqual => {
+                    self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(lhs.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Multiply,
+                            Box::new(lhs.clone()),
+                            Box::new(self.expression(ExpressionTrace::new())),
+                        )),
+                    )
+                }
+                TokenType::SlashEqual => {
+                    self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(lhs.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Divide,
+                            Box::new(lhs.clone()),
+                            Box::new(self.expression(ExpressionTrace::new())),
+                        )),
+                    )
+                }
+                TokenType::PercentEqual => {
+                    self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(lhs.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Divide,
+                            Box::new(lhs.clone()),
+                            Box::new(self.expression(ExpressionTrace::new())),
+                        )),
+                    )
+                }
+                TokenType::CarrotEqual => {
+                    self.skip_by(1);
+                    let lhs = trace.reduce(255).last().unwrap();
+                    Expression::Binary(
+                        BinaryOperator::Power,
+                        Box::new(lhs.clone()),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Divide,
+                            Box::new(lhs.clone()),
+                            Box::new(self.expression(ExpressionTrace::new())),
+                        )),
+                    )
+                }
+                TokenType::Question => {
+                    self.skip_by(1);
+                    let cond = trace.reduce(255).last().unwrap();
+                    let truthy = self.expression(ExpressionTrace::new());
+                    self.advance_one(TokenType::Colon);
+                    let falsy = self.expression(ExpressionTrace::new());
+                    Expression::Ternary(Box::new(cond), Box::new(truthy), Box::new(falsy))
+                }
+                TokenType::Plus
+                | TokenType::Minus
+                | TokenType::Star
+                | TokenType::Slash
+                | TokenType::Carrot
+                | TokenType::Percent
+                | TokenType::LeftParen
+                | TokenType::Identifier(_)
+                | TokenType::Literal(_)
+                | TokenType::LessThan
+                | TokenType::LessEqual
+                | TokenType::GreaterThan
+                | TokenType::GreaterEqual
+                | TokenType::EqualEqual
+                | TokenType::NotEqual
+                | TokenType::And
+                | TokenType::Or
+                | TokenType::Tilde
+                | TokenType::NotTilde => {
+                    let op = BinaryOperator::convert(&t.value);
+                    trace.push(ExpressionItem::IncompleteBinary(op));
+                    if op != BinaryOperator::Concat {
                         self.skip_by(1);
                     }
-                    match &expression {
-                        Expression::Binary(op, lhs, rhs) => Expression::Binary(
-                            op.clone(),
-                            lhs.clone(),
-                            Box::new(Expression::Binary(
-                                BinaryOperator::convert(&val),
-                                rhs.clone(),
-                                Box::new(self.expression()),
-                            )),
-                        ),
-                        e => Expression::Binary(
-                            BinaryOperator::convert(&val),
-                            Box::new(e.clone()),
-                            Box::new(self.expression()),
-                        ),
-                    }
+                    self.expression(trace.clone())
                 }
+                _ => trace.reduce(255).last().unwrap(),
             },
         }
     }
 
-    fn expression(&mut self) -> Expression<'a> {
+    fn expression(&mut self, mut trace: ExpressionTrace<'a>) -> Expression<'a> {
         let expression: Expression<'a>;
         match self.tokens.peek_next() {
             None => Expression::Empty,
@@ -555,17 +560,20 @@ impl<'a> Parser<'a> {
                 TokenType::Literal(value) => {
                     let v = value.clone();
                     self.skip_by(1);
-                    self.wrap_expression(Expression::Literal(v))
+                    self.extended_expression(Expression::Literal(v), &mut trace)
                 }
                 TokenType::LeftParen => {
                     self.skip_by(1);
-                    expression = Expression::Grouping(Box::new(self.expression()));
-                    self.wrap_expression(expression)
+                    expression =
+                        Expression::Grouping(Box::new(self.expression(ExpressionTrace::new())));
+                    self.extended_expression(expression, &mut trace)
                 }
                 TokenType::Dollar => {
                     self.skip_by(1);
-                    expression = Expression::FieldVariable(Box::new(self.expression()));
-                    self.wrap_expression(expression)
+                    expression = Expression::FieldVariable(Box::new(
+                        self.expression(ExpressionTrace::new()),
+                    ));
+                    self.extended_expression(expression, &mut trace)
                 }
                 TokenType::Identifier(name)
                     if self.check(vec![TokenType::Identifier(""), TokenType::LeftParen]) =>
@@ -579,11 +587,11 @@ impl<'a> Parser<'a> {
                         if !is_first {
                             self.advance_one(TokenType::Comma);
                         }
-                        args.push(self.expression());
+                        args.push(self.expression(ExpressionTrace::new()));
                         is_first = false;
                     }
                     let mut ret = Expression::Function(n, Box::new(args));
-                    ret = self.wrap_expression(ret);
+                    ret = self.extended_expression(ret, &mut trace);
                     self.advance_one(TokenType::RightParen);
                     ret
                 }
@@ -591,15 +599,17 @@ impl<'a> Parser<'a> {
                     if self.check(vec![TokenType::Identifier(""), TokenType::LeftBracket]) =>
                 {
                     self.skip_by(2);
-                    let mut ret = Expression::ArrayVariable(Box::new(self.expression()));
-                    ret = self.wrap_expression(ret);
+                    let mut ret = Expression::ArrayVariable(Box::new(
+                        self.expression(ExpressionTrace::new()),
+                    ));
+                    ret = self.extended_expression(ret, &mut trace);
                     self.advance_one(TokenType::RightBracket);
                     ret
                 }
                 TokenType::Identifier(name) => {
                     let n = *name;
                     self.skip_by(1);
-                    self.wrap_expression(Expression::Variable(n))
+                    self.extended_expression(Expression::Variable(n), &mut trace)
                 }
                 TokenType::Plus
                 | &TokenType::Minus
@@ -617,9 +627,9 @@ impl<'a> Parser<'a> {
                             &TokenType::MinusMinus => UnaryOperator::PreMinusMinus,
                             _ => unreachable!(),
                         },
-                        Box::new(self.expression()),
+                        Box::new(self.expression(ExpressionTrace::new())),
                     );
-                    self.wrap_expression(expression)
+                    self.extended_expression(expression, &mut trace)
                 }
                 TokenType::Semicolon | TokenType::Eof => Expression::Empty,
                 t => panic!(
@@ -635,9 +645,6 @@ impl<'a> Parser<'a> {
         let mut begin = Vec::<Statement<'a>>::new();
         let mut end = Vec::<Statement<'a>>::new();
         let mut actions = Vec::<(Expression<'a>, Vec<Statement<'a>>)>::new();
-
-        let p = self.tokens.peek_next();
-
         while self.tokens.peek_next().is_some() {
             match self.tokens.peek_next().unwrap().value {
                 TokenType::Eof => break,
@@ -811,7 +818,7 @@ mod tests {
 
     #[test]
     fn func2() {
-        // BEGIN { a - b * c ^ 4 / 6.9 } => ( a - ( ( b * (c^4) ) / 6.9) )
+        // BEGIN { a - b * c ^ 4 / 6.9 } => ( a - ( ( b * (c^4) ) / 6.9 ) )
         let tokens = vec![
             Token::new(TokenType::Begin, 0, 0),
             Token::new(TokenType::LeftCurly, 0, 0),
