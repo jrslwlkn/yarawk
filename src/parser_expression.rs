@@ -20,14 +20,14 @@ pub enum BinaryOperator {
     LessEqual,
     GreaterThan,
     GreaterEqual,
-    Tilde,
-    NotTilde,
+    Match,
+    NotMatch,
     Plus,
     Minus,
     Multiply,
     Divide,
     Modulo,
-    Power,
+    Exponent,
     Equal,
     Or,
     And,
@@ -37,13 +37,13 @@ pub enum BinaryOperator {
 impl BinaryOperator {
     pub fn convert(t: &TokenType) -> Self {
         match t {
-            TokenType::Carrot => Self::Power,
+            TokenType::Carrot => Self::Exponent,
             TokenType::Star => Self::Multiply,
             TokenType::Slash => Self::Divide,
             TokenType::Percent => Self::Modulo,
             TokenType::Plus => Self::Plus,
             TokenType::Minus => Self::Minus,
-            TokenType::Identifier(v) if v == &"in" => Self::In,
+            TokenType::In => Self::In,
             TokenType::LeftParen | TokenType::Literal(_) | TokenType::Identifier(_) => Self::Concat,
             TokenType::EqualEqual => Self::EqualEqual,
             TokenType::NotEqual => Self::NotEqual,
@@ -51,8 +51,8 @@ impl BinaryOperator {
             TokenType::LessEqual => Self::LessEqual,
             TokenType::GreaterThan => Self::GreaterThan,
             TokenType::GreaterEqual => Self::GreaterEqual,
-            TokenType::Tilde => Self::Tilde,
-            TokenType::NotTilde => Self::NotTilde,
+            TokenType::Tilde => Self::Match,
+            TokenType::NotTilde => Self::NotMatch,
             TokenType::And => Self::And,
             TokenType::Or => Self::Or,
             TokenType::Equal => Self::Equal,
@@ -68,10 +68,9 @@ impl BinaryOperator {
 
     fn precedence(&self) -> u8 {
         match self {
-            BinaryOperator::Power => 4,
+            BinaryOperator::Exponent => 4,
             BinaryOperator::Multiply | BinaryOperator::Divide | BinaryOperator::Modulo => 5,
             BinaryOperator::Plus | BinaryOperator::Minus => 7,
-            // TokenType::Identifier(v) if v == &"in" => 11,
             BinaryOperator::Concat => 8,
             BinaryOperator::EqualEqual
             | BinaryOperator::NotEqual
@@ -79,11 +78,11 @@ impl BinaryOperator {
             | BinaryOperator::LessEqual
             | BinaryOperator::GreaterThan
             | BinaryOperator::GreaterEqual => 9,
-            BinaryOperator::Tilde | BinaryOperator::NotTilde => 10,
+            BinaryOperator::Match | BinaryOperator::NotMatch => 10,
+            BinaryOperator::In => 11,
             BinaryOperator::And => 12,
             BinaryOperator::Or => 13,
             BinaryOperator::Equal => 14,
-            _ => panic!("how did {:?} get here?", self),
         }
     }
 }
@@ -217,7 +216,7 @@ impl<'a> Expression<'a> {
                 UnaryOperator::PrePlus | UnaryOperator::PreMinus | UnaryOperator::Not => 5,
             },
             Expression::Binary(op, _, _) => match op {
-                BinaryOperator::Power => 4,
+                BinaryOperator::Exponent => 4,
                 BinaryOperator::Multiply | &BinaryOperator::Divide | BinaryOperator::Modulo => 6,
                 BinaryOperator::Plus | BinaryOperator::Minus => 7,
                 BinaryOperator::Concat => 8,
@@ -227,47 +226,12 @@ impl<'a> Expression<'a> {
                 | BinaryOperator::LessEqual
                 | BinaryOperator::GreaterThan
                 | BinaryOperator::GreaterEqual => 9,
-                BinaryOperator::Tilde | BinaryOperator::NotTilde => 10,
+                BinaryOperator::Match | BinaryOperator::NotMatch => 10,
                 BinaryOperator::In => 11,
                 BinaryOperator::And => 12,
                 BinaryOperator::Or => 13,
                 BinaryOperator::Equal => 15,
             },
         }
-    }
-
-    // FIXME: precedence should be calculated by operator, so
-    //        if current expr is literal or variable,
-    //        we should go back until op is encountered (or other string or var -> concat op)
-    //        and compare against the precedence of that op instead
-    pub fn is_precedent_to(&self, t: &TokenType) -> Option<bool> {
-        Some(match t {
-            TokenType::PlusPlus | TokenType::MinusMinus => self.precedence() <= 3,
-            TokenType::Carrot => self.precedence() <= 4,
-            TokenType::Star | TokenType::Slash | TokenType::Percent => self.precedence() <= 5,
-            TokenType::Plus | TokenType::Minus => self.precedence() <= 7, // treating these only as binary here
-            TokenType::Identifier(v) if v == &"in" => self.precedence() <= 11,
-            TokenType::LeftParen | TokenType::Literal(_) | TokenType::Identifier(_) => {
-                self.precedence() <= 8
-            } // treating these as concat
-            TokenType::EqualEqual
-            | TokenType::NotEqual
-            | TokenType::LessThan
-            | TokenType::LessEqual
-            | TokenType::GreaterThan
-            | TokenType::GreaterEqual => self.precedence() <= 9,
-            TokenType::Tilde | TokenType::NotTilde => self.precedence() <= 10,
-            TokenType::And => self.precedence() <= 12,
-            TokenType::Or => self.precedence() <= 13,
-            TokenType::Question => todo!(), // FIXME: need to check in fn and keep parsing ternary
-            TokenType::Equal
-            | TokenType::PlusEqual
-            | TokenType::MinusEqual
-            | TokenType::StarEqual
-            | TokenType::SlashEqual
-            | TokenType::PercentEqual
-            | TokenType::CarrotEqual => self.precedence() <= 14,
-            _ => return None,
-        })
     }
 }

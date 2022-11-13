@@ -504,7 +504,7 @@ impl<'a> Parser<'a> {
                     self.skip_by(1);
                     let lhs = trace.reduce(255).last().unwrap();
                     Expression::Binary(
-                        BinaryOperator::Power,
+                        BinaryOperator::Exponent,
                         Box::new(lhs.clone()),
                         Box::new(Expression::Binary(
                             BinaryOperator::Divide,
@@ -846,7 +846,7 @@ mod tests {
                         BinaryOperator::Multiply,
                         Box::new(Expression::Variable("b")),
                         Box::new(Expression::Binary(
-                            BinaryOperator::Power,
+                            BinaryOperator::Exponent,
                             Box::new(Expression::Variable("c")),
                             Box::new(Expression::Literal(PrimitiveType::Integer(4))),
                         ))
