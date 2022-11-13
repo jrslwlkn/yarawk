@@ -184,7 +184,7 @@ impl<'a> ExpressionTrace<'a> {
         self
     }
 
-    pub fn push(&mut self, item: ExpressionItem<'a>) {
+    pub fn push(&mut self, item: ExpressionItem<'a>) -> &Self {
         match &item {
             ExpressionItem::IncompleteBinary(op) => {
                 if op.precedence() >= self.highest_precedence() {
@@ -194,6 +194,7 @@ impl<'a> ExpressionTrace<'a> {
             _ => {}
         }
         self.stack.push(item);
+        self
     }
 }
 
