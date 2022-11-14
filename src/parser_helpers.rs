@@ -1,5 +1,33 @@
 use crate::token::{PrimitiveType, TokenType};
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum Statement<'a> {
+    Empty,
+    Block(Vec<Box<Statement<'a>>>),
+    Break,
+    Continue,
+    Next,
+    Expression(Expression<'a>),
+    IoStatement, // TODO: figure out
+    Print(Vec<Expression<'a>>),
+    Exit(Expression<'a>),
+    Return(Expression<'a>),
+    Delete(Expression<'a>),
+    If(
+        Expression<'a>,
+        Vec<Box<Statement<'a>>>,
+        Vec<Box<Statement<'a>>>,
+    ),
+    DoWhile(Vec<Box<Statement<'a>>>, Expression<'a>),
+    While(Expression<'a>, Vec<Box<Statement<'a>>>),
+    For(
+        Expression<'a>,
+        Expression<'a>,
+        Option<Expression<'a>>, // if None - for-in, otherwise normal for-loop
+        Vec<Box<Statement<'a>>>,
+    ),
+}
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum UnaryOperator {
     PrePlus,
@@ -234,5 +262,52 @@ impl<'a> Expression<'a> {
                 BinaryOperator::Equal => 15,
             },
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct Iterator<'a, T> {
+    original: &'a Vec<T>,
+    index: isize,
+}
+
+impl<'a, T> Iterator<'a, T> {
+    pub fn new(original: &'a Vec<T>) -> Self {
+        Self {
+            original,
+            index: -1,
+        }
+    }
+
+    pub fn current(&self) -> Option<&T> {
+        if self.index < 0 || self.index as usize >= self.original.len() {
+            return None;
+        }
+        self.original.get(self.index as usize)
+    }
+
+    pub fn prev(&mut self) -> Option<&T> {
+        self.index -= 1;
+        self.current()
+    }
+
+    pub fn next(&mut self) -> Option<&T> {
+        self.index += 1;
+        self.current()
+    }
+
+    pub fn peek_nth(&self, num: isize) -> Option<&T> {
+        if self.index + num < 0 || (self.index + num) as usize >= self.original.len() {
+            return None;
+        }
+        self.original.get((self.index + num) as usize)
+    }
+
+    pub fn peek_next(&self) -> Option<&T> {
+        self.peek_nth(1)
+    }
+
+    pub fn peek_prev(&self) -> Option<&T> {
+        self.peek_nth(-1)
     }
 }

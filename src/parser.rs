@@ -1,91 +1,16 @@
 use crate::{
-    parser_expression::{
-        BinaryOperator, Expression, ExpressionItem, ExpressionTrace, UnaryOperator,
+    parser_helpers::{
+        BinaryOperator, Expression, ExpressionItem, ExpressionTrace, Iterator, Statement,
+        UnaryOperator,
     },
     token::{PrimitiveType, Token, TokenType},
 };
-
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum Statement<'a> {
-    Empty,
-    Block(Vec<Box<Statement<'a>>>),
-    Break,
-    Continue,
-    Next,
-    Expression(Expression<'a>),
-    IoStatement, // TODO: figure out
-    Print(Vec<Expression<'a>>),
-    Exit(Expression<'a>),
-    Return(Expression<'a>),
-    Delete(Expression<'a>),
-    If(
-        Expression<'a>,
-        Vec<Box<Statement<'a>>>,
-        Vec<Box<Statement<'a>>>,
-    ),
-    DoWhile(Vec<Box<Statement<'a>>>, Expression<'a>),
-    While(Expression<'a>, Vec<Box<Statement<'a>>>),
-    For(
-        Expression<'a>,
-        Expression<'a>,
-        Option<Expression<'a>>, // if None - for-in, otherwise normal for-loop
-        Vec<Box<Statement<'a>>>,
-    ),
-}
-
 #[derive(Debug)]
 pub struct Program<'a> {
     functions: Vec<(&'a str, Vec<Statement<'a>>)>,
     begin: Vec<Statement<'a>>,
     end: Vec<Statement<'a>>,
     actions: Vec<(Expression<'a>, Vec<Statement<'a>>)>,
-}
-
-#[derive(Clone)]
-pub struct Iterator<'a, T> {
-    original: &'a Vec<T>,
-    index: isize,
-}
-
-impl<'a, T> Iterator<'a, T> {
-    pub fn new(original: &'a Vec<T>) -> Self {
-        Self {
-            original,
-            index: -1,
-        }
-    }
-
-    pub fn current(&self) -> Option<&T> {
-        if self.index < 0 || self.index as usize >= self.original.len() {
-            return None;
-        }
-        self.original.get(self.index as usize)
-    }
-
-    pub fn prev(&mut self) -> Option<&T> {
-        self.index -= 1;
-        self.current()
-    }
-
-    pub fn next(&mut self) -> Option<&T> {
-        self.index += 1;
-        self.current()
-    }
-
-    pub fn peek_nth(&self, num: isize) -> Option<&T> {
-        if self.index + num < 0 || (self.index + num) as usize >= self.original.len() {
-            return None;
-        }
-        self.original.get((self.index + num) as usize)
-    }
-
-    pub fn peek_next(&self) -> Option<&T> {
-        self.peek_nth(1)
-    }
-
-    pub fn peek_prev(&self) -> Option<&T> {
-        self.peek_nth(-1)
-    }
 }
 
 pub struct Parser<'a> {
@@ -99,51 +24,26 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn check(&self, types: Vec<TokenType<'a>>) -> bool {
-        let mut cur = self.tokens.clone();
-        for t in types {
-            match (cur.next(), t) {
-                (None, _) => return false,
-                (Some(lhs), rhs) if lhs.value != rhs => return false,
-                _ => {}
+    pub fn parse(&mut self) -> Program {
+        let mut functions = Vec::<(&'a str, Vec<Statement<'a>>)>::new();
+        let mut begin = Vec::<Statement<'a>>::new();
+        let mut end = Vec::<Statement<'a>>::new();
+        let mut actions = Vec::<(Expression<'a>, Vec<Statement<'a>>)>::new();
+        while self.tokens.peek_next().is_some() {
+            match self.tokens.peek_next().unwrap().value {
+                TokenType::Eof => break,
+                TokenType::Begin => self.begin(&mut begin),
+                TokenType::End => self.end(&mut end),
+                TokenType::Function => self.function(&mut functions),
+                _ => self.action(&mut actions),
             }
         }
-        true
-    }
-
-    fn check_one(&self, token_type: TokenType<'a>) -> bool {
-        self.check(vec![token_type])
-    }
-
-    fn advance(&mut self, types: Vec<TokenType<'a>>) {
-        for token in types {
-            let val = &self.tokens.peek_next();
-            match (val, &token) {
-                (None, _) => panic!(
-                    "expected: {:?} @ {}:{}",
-                    &token,
-                    self.tokens
-                        .current()
-                        .unwrap_or(&Token::new(TokenType::Eof, 0, 0))
-                        .row,
-                    self.tokens
-                        .current()
-                        .unwrap_or(&Token::new(TokenType::Eof, 0, 0))
-                        .col,
-                ),
-                (Some(lhs), rhs) if lhs.value != *rhs => panic!(
-                    "expected: {:?}, received: {:?}, @ {}:{}",
-                    &token, lhs.value, lhs.row, lhs.col
-                ),
-                _ => {
-                    self.tokens.next();
-                }
-            }
+        Program {
+            functions,
+            begin,
+            end,
+            actions,
         }
-    }
-
-    fn advance_one(&mut self, token_type: TokenType<'a>) {
-        self.advance(vec![token_type])
     }
 
     fn begin(&mut self, dest: &mut Vec<Statement<'a>>) {
@@ -203,17 +103,28 @@ impl<'a> Parser<'a> {
         dest.push((expression, statements));
     }
 
-    fn skip_newlines_and_semicolons(&mut self) {
-        // handle trailing semicolons
-        while self.check_one(TokenType::Semicolon) | self.check_one(TokenType::Newline) {
-            self.tokens.next();
+    fn statements(&mut self) -> Vec<Statement<'a>> {
+        // parse statements either until the end of the tokens or until we encounter a right curly
+        self.skip_newlines_and_semicolons();
+        let mut ret = Vec::<Statement<'a>>::new();
+        while self.tokens.current().is_some() && !self.check_one(TokenType::RightCurly) {
+            let s = self.statement();
+            if ret.is_empty() || s != Statement::Expression(Expression::Empty) {
+                // no need to keep trailing empty expressions
+                ret.push(s);
+            }
         }
+        ret
     }
 
-    fn skip_by(&mut self, num: usize) {
-        for _ in 0..num {
-            self.tokens.next();
+    fn boxed_statements(&mut self) -> Vec<Box<Statement<'a>>> {
+        // parse statements either until the end of the tokens or until we encounter a right curly
+        self.skip_newlines_and_semicolons();
+        let mut ret = Vec::<Box<Statement<'a>>>::new();
+        while self.tokens.current().is_some() && !self.check_one(TokenType::RightCurly) {
+            ret.push(Box::new(self.statement()));
         }
+        ret
     }
 
     fn statement(&mut self) -> Statement<'a> {
@@ -359,28 +270,120 @@ impl<'a> Parser<'a> {
         ret
     }
 
-    fn statements(&mut self) -> Vec<Statement<'a>> {
-        // parse statements either until the end of the tokens or until we encounter a right curly
-        self.skip_newlines_and_semicolons();
-        let mut ret = Vec::<Statement<'a>>::new();
-        while self.tokens.current().is_some() && !self.check_one(TokenType::RightCurly) {
-            let s = self.statement();
-            if ret.is_empty() || s != Statement::Expression(Expression::Empty) {
-                // no need to keep trailing empty expressions
-                ret.push(s);
+    fn expression(&mut self, mut trace: ExpressionTrace<'a>) -> Expression<'a> {
+        let expression: Expression<'a>;
+        match self.tokens.peek_next() {
+            None => Expression::Empty,
+            Some(e) => {
+                match &e.value {
+                    TokenType::Literal(value) => {
+                        let val = value.clone();
+                        self.skip_by(1);
+                        self.extended_expression(Expression::Literal(val), &mut trace)
+                    }
+                    TokenType::LeftParen => {
+                        self.skip_by(1);
+                        expression =
+                            Expression::Grouping(Box::new(self.expression(ExpressionTrace::new())));
+                        let ret = self.extended_expression(expression, &mut trace);
+                        self.advance_one(TokenType::RightParen);
+                        self.extended_expression(ret, &mut trace)
+                    }
+                    TokenType::Dollar => {
+                        match self.tokens.peek_nth(2) {
+                            None => panic!(),
+                            Some(t) => match &t.value {
+                                TokenType::LeftParen => {
+                                    // to ensure precedence of $(..) over anything else
+                                    self.advance(vec![TokenType::Dollar, TokenType::LeftParen]);
+                                    let e = self.expression(ExpressionTrace::new());
+                                    self.advance_one(TokenType::RightParen);
+                                    self.extended_expression(
+                                        Expression::FieldVariable(Box::new(e)),
+                                        &mut trace,
+                                    )
+                                }
+                                TokenType::Literal(PrimitiveType::Integer(value)) => {
+                                    let v = value.clone();
+                                    self.skip_by(2); // $ plus Literal
+                                    self.extended_expression(
+                                    Expression::FieldVariable(Box::new(Expression::Literal(PrimitiveType::Integer(v)))),
+                                        &mut trace,
+                                    )
+                                }
+                                _ => panic!("expected: int field or group expression, received: {:?} @ {}:{}", t, e.row, e.col),
+                            },
+                        }
+                    }
+                    TokenType::Identifier(name)
+                        if self.check(vec![TokenType::Identifier(""), TokenType::LeftParen]) =>
+                    {
+                        // parse function call
+                        let n = *name;
+                        self.skip_by(2);
+                        let mut args = Vec::<Expression>::new();
+                        let mut is_first = true;
+                        while self.tokens.current().is_some()
+                            && !self.check_one(TokenType::RightParen)
+                        {
+                            if !is_first {
+                                self.advance_one(TokenType::Comma);
+                            }
+                            args.push(self.expression(ExpressionTrace::new()));
+                            is_first = false;
+                        }
+                        let mut ret = Expression::Function(n, Box::new(args));
+                        ret = self.extended_expression(ret, &mut trace);
+                        self.advance_one(TokenType::RightParen);
+                        ret
+                    }
+                    TokenType::Identifier(_)
+                        if self.check(vec![TokenType::Identifier(""), TokenType::LeftBracket]) =>
+                    {
+                        // parse (associative?) array access
+                        self.skip_by(2);
+                        let mut ret = Expression::ArrayVariable(Box::new(
+                            self.expression(ExpressionTrace::new()),
+                        ));
+                        ret = self.extended_expression(ret, &mut trace);
+                        self.advance_one(TokenType::RightBracket);
+                        ret
+                    }
+                    TokenType::Identifier(name) => {
+                        // parse variable
+                        let n = *name;
+                        self.skip_by(1);
+                        self.extended_expression(Expression::Variable(n), &mut trace)
+                    }
+                    TokenType::Plus
+                    | &TokenType::Minus
+                    | &TokenType::Not
+                    | &TokenType::PlusPlus
+                    | &TokenType::MinusMinus => {
+                        // parse unary expression
+                        let val = &e.value.clone();
+                        self.skip_by(1);
+                        expression = Expression::Unary(
+                            match val {
+                                &TokenType::Plus => UnaryOperator::PrePlus,
+                                &TokenType::Minus => UnaryOperator::PreMinus,
+                                &TokenType::Not => UnaryOperator::Not,
+                                &TokenType::PlusPlus => UnaryOperator::PrePlusPlus,
+                                &TokenType::MinusMinus => UnaryOperator::PreMinusMinus,
+                                _ => unreachable!(),
+                            },
+                            Box::new(self.expression(ExpressionTrace::new())),
+                        );
+                        self.extended_expression(expression, &mut trace)
+                    }
+                    TokenType::Semicolon | TokenType::Eof => Expression::Empty,
+                    t => panic!(
+                        "expected: expression, received {:?} @ {}:{}",
+                        t, e.row, e.col
+                    ),
+                }
             }
         }
-        ret
-    }
-
-    fn boxed_statements(&mut self) -> Vec<Box<Statement<'a>>> {
-        // parse statements either until the end of the tokens or until we encounter a right curly
-        self.skip_newlines_and_semicolons();
-        let mut ret = Vec::<Box<Statement<'a>>>::new();
-        while self.tokens.current().is_some() && !self.check_one(TokenType::RightCurly) {
-            ret.push(Box::new(self.statement()));
-        }
-        ret
     }
 
     fn extended_expression(
@@ -540,148 +543,68 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expression(&mut self, mut trace: ExpressionTrace<'a>) -> Expression<'a> {
-        let expression: Expression<'a>;
-        match self.tokens.peek_next() {
-            None => Expression::Empty,
-            Some(e) => {
-                match &e.value {
-                    TokenType::Literal(value) => {
-                        let val = value.clone();
-                        self.skip_by(1);
-                        self.extended_expression(Expression::Literal(val), &mut trace)
-                    }
-                    TokenType::LeftParen => {
-                        self.skip_by(1);
-                        expression =
-                            Expression::Grouping(Box::new(self.expression(ExpressionTrace::new())));
-                        let ret = self.extended_expression(expression, &mut trace);
-                        self.advance_one(TokenType::RightParen);
-                        self.extended_expression(ret, &mut trace)
-                    }
-                    TokenType::Dollar => {
-                        match self.tokens.peek_nth(2) {
-                            None => panic!(),
-                            Some(t) => match &t.value {
-                                TokenType::LeftParen => {
-                                    // to ensure precedence of $(..) over anything else
-                                    self.advance(vec![TokenType::Dollar, TokenType::LeftParen]);
-                                    let e = self.expression(ExpressionTrace::new());
-                                    self.advance_one(TokenType::RightParen);
-                                    self.extended_expression(
-                                        Expression::FieldVariable(Box::new(e)),
-                                        &mut trace,
-                                    )
-                                }
-                                TokenType::Literal(PrimitiveType::Integer(value)) => {
-                                    let v = value.clone();
-                                    self.skip_by(2); // $ plus Literal
-                                    self.extended_expression(
-                                    Expression::FieldVariable(Box::new(Expression::Literal(PrimitiveType::Integer(v)))),
-                                        &mut trace,
-                                    )
-                                }
-                                _ => panic!("expected: int field or group expression, received: {:?} @ {}:{}", t, e.row, e.col),
-                            },
-                        }
-                    }
-                    TokenType::Identifier(name)
-                        if self.check(vec![TokenType::Identifier(""), TokenType::LeftParen]) =>
-                    {
-                        // parse function call
-                        let n = *name;
-                        self.skip_by(2);
-                        let mut args = Vec::<Expression>::new();
-                        let mut is_first = true;
-                        while self.tokens.current().is_some()
-                            && !self.check_one(TokenType::RightParen)
-                        {
-                            if !is_first {
-                                self.advance_one(TokenType::Comma);
-                            }
-                            args.push(self.expression(ExpressionTrace::new()));
-                            is_first = false;
-                        }
-                        let mut ret = Expression::Function(n, Box::new(args));
-                        ret = self.extended_expression(ret, &mut trace);
-                        self.advance_one(TokenType::RightParen);
-                        ret
-                    }
-                    TokenType::Identifier(_)
-                        if self.check(vec![TokenType::Identifier(""), TokenType::LeftBracket]) =>
-                    {
-                        // parse (associative?) array access
-                        self.skip_by(2);
-                        let mut ret = Expression::ArrayVariable(Box::new(
-                            self.expression(ExpressionTrace::new()),
-                        ));
-                        ret = self.extended_expression(ret, &mut trace);
-                        self.advance_one(TokenType::RightBracket);
-                        ret
-                    }
-                    TokenType::Identifier(name) => {
-                        // parse variable
-                        let n = *name;
-                        self.skip_by(1);
-                        self.extended_expression(Expression::Variable(n), &mut trace)
-                    }
-                    TokenType::Plus
-                    | &TokenType::Minus
-                    | &TokenType::Not
-                    | &TokenType::PlusPlus
-                    | &TokenType::MinusMinus => {
-                        // parse unary expression
-                        let val = &e.value.clone();
-                        self.skip_by(1);
-                        expression = Expression::Unary(
-                            match val {
-                                &TokenType::Plus => UnaryOperator::PrePlus,
-                                &TokenType::Minus => UnaryOperator::PreMinus,
-                                &TokenType::Not => UnaryOperator::Not,
-                                &TokenType::PlusPlus => UnaryOperator::PrePlusPlus,
-                                &TokenType::MinusMinus => UnaryOperator::PreMinusMinus,
-                                _ => unreachable!(),
-                            },
-                            Box::new(self.expression(ExpressionTrace::new())),
-                        );
-                        self.extended_expression(expression, &mut trace)
-                    }
-                    TokenType::Semicolon | TokenType::Eof => Expression::Empty,
-                    t => panic!(
-                        "expected: expression, received {:?} @ {}:{}",
-                        t, e.row, e.col
-                    ),
+    fn check(&self, types: Vec<TokenType<'a>>) -> bool {
+        let mut cur = self.tokens.clone();
+        for t in types {
+            match (cur.next(), t) {
+                (None, _) => return false,
+                (Some(lhs), rhs) if lhs.value != rhs => return false,
+                _ => {}
+            }
+        }
+        true
+    }
+
+    fn check_one(&self, token_type: TokenType<'a>) -> bool {
+        self.check(vec![token_type])
+    }
+
+    fn advance(&mut self, types: Vec<TokenType<'a>>) {
+        for token in types {
+            let val = &self.tokens.peek_next();
+            match (val, &token) {
+                (None, _) => panic!(
+                    "expected: {:?} @ {}:{}",
+                    &token,
+                    self.tokens
+                        .current()
+                        .unwrap_or(&Token::new(TokenType::Eof, 0, 0))
+                        .row,
+                    self.tokens
+                        .current()
+                        .unwrap_or(&Token::new(TokenType::Eof, 0, 0))
+                        .col,
+                ),
+                (Some(lhs), rhs) if lhs.value != *rhs => panic!(
+                    "expected: {:?}, received: {:?}, @ {}:{}",
+                    &token, lhs.value, lhs.row, lhs.col
+                ),
+                _ => {
+                    self.tokens.next();
                 }
             }
         }
     }
 
-    pub fn parse(&mut self) -> Program {
-        let mut functions = Vec::<(&'a str, Vec<Statement<'a>>)>::new();
-        let mut begin = Vec::<Statement<'a>>::new();
-        let mut end = Vec::<Statement<'a>>::new();
-        let mut actions = Vec::<(Expression<'a>, Vec<Statement<'a>>)>::new();
-        while self.tokens.peek_next().is_some() {
-            match self.tokens.peek_next().unwrap().value {
-                TokenType::Eof => break,
-                TokenType::Begin => self.begin(&mut begin),
-                TokenType::End => self.end(&mut end),
-                TokenType::Function => self.function(&mut functions),
-                _ => self.action(&mut actions),
-            }
-        }
+    fn advance_one(&mut self, token_type: TokenType<'a>) {
+        self.advance(vec![token_type])
+    }
 
-        return Program {
-            functions,
-            begin,
-            end,
-            actions,
-        };
+    fn skip_by(&mut self, num: usize) {
+        for _ in 0..num {
+            self.tokens.next();
+        }
+    }
+
+    fn skip_newlines_and_semicolons(&mut self) {
+        // handle trailing semicolons
+        while self.check_one(TokenType::Semicolon) | self.check_one(TokenType::Newline) {
+            self.tokens.next();
+        }
     }
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
 
