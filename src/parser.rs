@@ -557,10 +557,10 @@ impl<'a> Parser<'a> {
                             Expression::Grouping(Box::new(self.expression(ExpressionTrace::new())));
                         let ret = self.extended_expression(expression, &mut trace);
                         self.advance_one(TokenType::RightParen);
-                        ret
+                        self.extended_expression(ret, &mut trace)
                     }
                     TokenType::Dollar => {
-                        match self.tokens.peek_next() {
+                        match self.tokens.peek_nth(2) {
                             None => panic!(),
                             Some(t) => match &t.value {
                                 TokenType::LeftParen => {
@@ -570,15 +570,15 @@ impl<'a> Parser<'a> {
                                     self.advance_one(TokenType::RightParen);
                                     self.extended_expression(
                                         Expression::FieldVariable(Box::new(e)),
-                                        &mut ExpressionTrace::new(),
+                                        &mut trace,
                                     )
                                 }
-                                TokenType::Literal(value) => {
+                                TokenType::Literal(PrimitiveType::Integer(value)) => {
                                     let v = value.clone();
                                     self.skip_by(2); // $ plus Literal
                                     self.extended_expression(
-                                    Expression::FieldVariable(Box::new(Expression::Literal(v))),
-                                        &mut ExpressionTrace::new(),
+                                    Expression::FieldVariable(Box::new(Expression::Literal(PrimitiveType::Integer(v)))),
+                                        &mut trace,
                                     )
                                 }
                                 _ => panic!("expected: int field or group expression, received: {:?} @ {}:{}", t, e.row, e.col),
@@ -727,8 +727,12 @@ mod tests {
 
     #[test]
     fn print() {
+        // {
+        // print "hello", "world"
+        //  }
         let tokens = vec![
             Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::Print, 0, 0),
             Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
             Token::new(TokenType::Comma, 0, 0),
@@ -747,6 +751,26 @@ mod tests {
                     Expression::Literal(PrimitiveType::String("world"))
                 ]),]
             )],
+        )
+    }
+
+    #[test]
+    fn print2() {
+        // {
+        // print
+        //  }
+        let tokens = vec![
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.actions,
+            vec![(Expression::Empty, vec![Statement::Print(vec![]),])],
         )
     }
 
@@ -797,6 +821,35 @@ mod tests {
                 ]
             )]
         )
+    }
+
+    #[test]
+    fn function2() {
+        // function f1() {
+        //
+        // }
+        // function f2() {
+        //
+        // }
+        let tokens = vec![
+            Token::new(TokenType::Function, 0, 0),
+            Token::new(TokenType::Identifier("f1"), 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+            Token::new(TokenType::Function, 0, 0),
+            Token::new(TokenType::Identifier("f2"), 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(prog.functions, vec![("f1", vec![]), ("f2", vec![]),])
     }
 
     #[test]
@@ -902,6 +955,74 @@ mod tests {
                     Box::new(Expression::Literal(PrimitiveType::Integer(42)))
                 )
             ))])]
+        )
+    }
+
+    #[test]
+    fn binary_expr() {
+        // FIXME
+        // END { a = 4 + 5 * 2 - a ^ 3 * (a-1) - 1 } ---> [ [4 + 5*2] - (a^3 * (a-1)) ] - 1
+        let tokens = vec![
+            Token::new(TokenType::End, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::Equal, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(4)), 0, 0),
+            Token::new(TokenType::Plus, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(5)), 0, 0),
+            Token::new(TokenType::Star, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(2)), 0, 0),
+            Token::new(TokenType::Minus, 0, 0),
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::Carrot, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(3)), 0, 0),
+            Token::new(TokenType::Star, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::Minus, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Minus, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.end,
+            vec![Statement::Expression(Expression::Binary(
+                BinaryOperator::Equal,
+                Box::new(Expression::Variable("a")),
+                Box::new(Expression::Binary(
+                    BinaryOperator::Minus,
+                    Box::new(Expression::Binary(
+                        BinaryOperator::Minus,
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Plus,
+                            Box::new(Expression::Literal(PrimitiveType::Integer(4))),
+                            Box::new(Expression::Binary(
+                                BinaryOperator::Multiply,
+                                Box::new(Expression::Literal(PrimitiveType::Integer(5))),
+                                Box::new(Expression::Literal(PrimitiveType::Integer(2)))
+                            ))
+                        )),
+                        Box::new(Expression::Binary(
+                            BinaryOperator::Multiply,
+                            Box::new(Expression::Binary(
+                                BinaryOperator::Exponent,
+                                Box::new(Expression::Variable("a")),
+                                Box::new(Expression::Literal(PrimitiveType::Integer(3)))
+                            )),
+                            Box::new(Expression::Grouping(Box::new(Expression::Binary(
+                                BinaryOperator::Minus,
+                                Box::new(Expression::Variable("a")),
+                                Box::new(Expression::Literal(PrimitiveType::Integer(1)))
+                            ))))
+                        ))
+                    )),
+                    Box::new(Expression::Literal(PrimitiveType::Integer(1)))
+                ))
+            ))]
         )
     }
 
@@ -1012,5 +1133,86 @@ mod tests {
                 ))
             ))]
         )
+    }
+
+    #[test]
+    fn dollar() {
+        // END { $1 = "hello" }
+        let tokens = vec![
+            Token::new(TokenType::End, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Dollar, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::Equal, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.end,
+            vec![Statement::Expression(Expression::Binary(
+                BinaryOperator::Equal,
+                Box::new(Expression::FieldVariable(Box::new(Expression::Literal(
+                    PrimitiveType::Integer(1)
+                )))),
+                Box::new(Expression::Literal(PrimitiveType::String("hello"))),
+            ))]
+        )
+    }
+
+    #[test]
+    fn dollar_group() {
+        // FIXME
+        // END { $(4+$(NF)) = "hello" }
+        let tokens = vec![
+            Token::new(TokenType::End, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Dollar, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(4)), 0, 0),
+            Token::new(TokenType::Plus, 0, 0),
+            Token::new(TokenType::Dollar, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Identifier("NF"), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Equal, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.end,
+            vec![Statement::Expression(Expression::Binary(
+                BinaryOperator::Equal,
+                Box::new(Expression::FieldVariable(Box::new(Expression::Binary(
+                    BinaryOperator::Plus,
+                    Box::new(Expression::Literal(PrimitiveType::Integer(4))),
+                    Box::new(Expression::FieldVariable(Box::new(Expression::Variable(
+                        "NF"
+                    ))))
+                )))),
+                Box::new(Expression::Literal(PrimitiveType::String("hello")))
+            ))]
+        )
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "expected: int field or group expression, received: Token { value: Literal(Float(9.6)), row: 0, col: 0 } @ 0:0"
+    )]
+    fn dollar_float() {
+        // END { $9.6 }
+        let tokens = vec![
+            Token::new(TokenType::End, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Dollar, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Float(9.6)), 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let _prog = p.parse();
     }
 }
