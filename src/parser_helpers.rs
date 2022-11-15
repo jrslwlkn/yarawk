@@ -3,12 +3,12 @@ use crate::token::{PrimitiveType, TokenType};
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Statement<'a> {
     Empty,
-    Block(Vec<Box<Statement<'a>>>),
+    Block(Vec<Box<Statement<'a>>>), // FIXME: what is this for?
     Break,
     Continue,
     Next,
     Expression(Expression<'a>),
-    IoStatement, // TODO: figure out
+    IoStatement,
     Print(Vec<Expression<'a>>),
     Exit(Expression<'a>),
     Return(Expression<'a>),
@@ -23,7 +23,7 @@ pub enum Statement<'a> {
     For(
         Expression<'a>,
         Expression<'a>,
-        Option<Expression<'a>>, // if None - for-in, otherwise normal for-loop
+        Option<Expression<'a>>,
         Vec<Box<Statement<'a>>>,
     ),
 }

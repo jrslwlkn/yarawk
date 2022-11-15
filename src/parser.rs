@@ -18,7 +18,6 @@ pub struct Parser<'a> {
     tokens: Iterator<'a, Token<'a>>,
 }
 
-// FIXME: curlies are optional in Actions, (default is print $0 instead, default for print is print $0)
 // FIXME: handling of if .. else if .. else if .....
 // FIXME: strings are regexes within ~ and !~ binary expressions
 //        strings are only requiring escaping the backslash
@@ -174,7 +173,7 @@ impl<'a> Parser<'a> {
                     self.skip_by(1);
                     let mut args = Vec::<Expression>::new();
                     let mut is_first = true;
-                    while !self.tokens.peek_next().is_none()
+                    while self.tokens.peek_next().is_some()
                         && !self.check_one(TokenType::Semicolon)
                         && !self.check_one(TokenType::Newline)
                         && !self.check_one(TokenType::RightCurly)
@@ -185,6 +184,7 @@ impl<'a> Parser<'a> {
                         is_first = false;
                         args.push(self.expression(ExpressionTrace::new()));
                     }
+                    self.skip_newlines_and_semicolons();
                     Statement::Print(args)
                 }
                 TokenType::Delete => {
@@ -198,19 +198,20 @@ impl<'a> Parser<'a> {
                     let mut ifs = Vec::<Box<Statement<'a>>>::new();
                     let mut elses = Vec::<Box<Statement<'a>>>::new();
                     if self.check_one(TokenType::LeftCurly) {
-                        self.advance_one(TokenType::LeftCurly);
+                        self.skip_by(1);
                         ifs.extend(self.boxed_statements());
                         self.advance_one(TokenType::RightCurly);
                     } else {
-                        ifs.extend(self.boxed_statements());
+                        ifs.push(Box::new(self.statement()));
                     }
                     if self.check_one(TokenType::Else) {
+                        self.skip_by(1);
                         if self.check_one(TokenType::LeftCurly) {
-                            self.advance_one(TokenType::LeftCurly);
+                            self.skip_by(1);
                             elses.extend(self.boxed_statements());
                             self.advance_one(TokenType::RightCurly);
                         } else {
-                            elses.extend(self.boxed_statements());
+                            elses.push(Box::new(self.statement()));
                         }
                     }
                     Statement::If(cond, ifs, elses)
@@ -416,7 +417,6 @@ impl<'a> Parser<'a> {
                 TokenType::Semicolon | TokenType::Newline => {
                     // semicolon or newline end statements,
                     // so expressions are terminated too
-                    self.skip_by(1);
                     trace.reduce(255).last().unwrap()
                 }
                 TokenType::PlusPlus | TokenType::MinusMinus => {
@@ -1224,5 +1224,226 @@ mod tests {
         ];
         let mut p = Parser::new(&tokens);
         let _prog = p.parse();
+    }
+
+    #[test]
+    fn if1() {
+        let tokens = vec![
+            Token::new(TokenType::Begin, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            // if (1) print
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            // if (1)
+            //      print
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            // if (1) { print }
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+            //
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.begin,
+            vec![
+                Statement::If(
+                    Expression::Literal(PrimitiveType::Integer(1)),
+                    vec![Box::new(Statement::Print(vec![]))],
+                    vec![]
+                ),
+                Statement::If(
+                    Expression::Literal(PrimitiveType::Integer(1)),
+                    vec![Box::new(Statement::Print(vec![]))],
+                    vec![]
+                ),
+                Statement::If(
+                    Expression::Literal(PrimitiveType::Integer(1)),
+                    vec![Box::new(Statement::Print(vec![]))],
+                    vec![]
+                ),
+            ]
+        )
+    }
+
+    #[test]
+    fn if_else1() {
+        let tokens = vec![
+            Token::new(TokenType::Begin, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            // if (1) print 1
+            // else print 2
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Else, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(2)), 0, 0),
+            //
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.begin,
+            vec![Statement::If(
+                Expression::Literal(PrimitiveType::Integer(1)),
+                vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    PrimitiveType::Integer(1)
+                ),]))],
+                vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    PrimitiveType::Integer(2)
+                ),]))],
+            ),]
+        )
+    }
+
+    #[test]
+    fn if2() {
+        // BEGIN {
+        // if ("1") print "1"
+        // else if ("2") print "2"
+        // else if ("3") print "3"
+        // }
+        let tokens = vec![
+            Token::new(TokenType::Begin, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("1")), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("1")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Else, 0, 0),
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("2")), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("2")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Else, 0, 0),
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("3")), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("3")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.begin,
+            vec![Statement::If(
+                Expression::Literal(PrimitiveType::String("1")),
+                vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    PrimitiveType::String("1")
+                ),]))],
+                vec![Box::new(Statement::If(
+                    Expression::Literal(PrimitiveType::String("2")),
+                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                        PrimitiveType::String("2")
+                    )]))],
+                    vec![Box::new(Statement::If(
+                        Expression::Literal(PrimitiveType::String("3")),
+                        vec![Box::new(Statement::Print(vec![Expression::Literal(
+                            PrimitiveType::String("3")
+                        )]))],
+                        vec![]
+                    ))]
+                ))],
+            ),]
+        )
+    }
+
+    #[test]
+    fn if3() {
+        // BEGIN {
+        // if ("1") print "1"
+        // else if ("2") print "2"
+        // else if ("3") print "3"
+        // else print "4"
+        // }
+        let tokens = vec![
+            Token::new(TokenType::Begin, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("1")), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("1")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Else, 0, 0),
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("2")), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("2")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Else, 0, 0),
+            Token::new(TokenType::If, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("3")), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("3")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::Else, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("4")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.begin,
+            vec![Statement::If(
+                Expression::Literal(PrimitiveType::String("1")),
+                vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    PrimitiveType::String("1")
+                ),]))],
+                vec![Box::new(Statement::If(
+                    Expression::Literal(PrimitiveType::String("2")),
+                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                        PrimitiveType::String("2")
+                    )]))],
+                    vec![Box::new(Statement::If(
+                        Expression::Literal(PrimitiveType::String("3")),
+                        vec![Box::new(Statement::Print(vec![Expression::Literal(
+                            PrimitiveType::String("3")
+                        )]))],
+                        vec![Box::new(Statement::Print(vec![Expression::Literal(
+                            PrimitiveType::String("4")
+                        )]))],
+                    ))]
+                ))],
+            ),]
+        )
     }
 }
