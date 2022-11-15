@@ -5,18 +5,29 @@ use crate::{
     },
     token::{PrimitiveType, Token, TokenType},
 };
+
 #[derive(Debug)]
 pub struct Program<'a> {
     functions: Vec<(&'a str, Vec<Statement<'a>>)>,
     begin: Vec<Statement<'a>>,
     end: Vec<Statement<'a>>,
-    actions: Vec<(Expression<'a>, Vec<Statement<'a>>)>,
+    actions: Vec<(Vec<Expression<'a>>, Vec<Statement<'a>>)>,
 }
 
 pub struct Parser<'a> {
     tokens: Iterator<'a, Token<'a>>,
 }
 
+// FIXME: curlies are optional in Actions, (default is print $0 instead, default for print is print $0)
+// FIXME: handling of if .. else if .. else if .....
+// FIXME: strings are regexes within ~ and !~ binary expressions
+//        strings are only requiring escaping the backslash
+//        however, only regexes are allowed as filters for actions
+// FIXME: handle pipes -> print | [sys command string]
+// FIXME: handle redirects -> print > [filename]
+// FIXME: handle printf statement (just like print but has format string first)
+// FIXME: handle optional redirect in print statements -> print "hello", "world" > [filename]
+// FIXME: in IO operations (print, getline) "<" means we're reading into our stuff, and ">" means we're writing
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a Vec<Token<'a>>) -> Self {
         Self {
@@ -28,8 +39,9 @@ impl<'a> Parser<'a> {
         let mut functions = Vec::<(&'a str, Vec<Statement<'a>>)>::new();
         let mut begin = Vec::<Statement<'a>>::new();
         let mut end = Vec::<Statement<'a>>::new();
-        let mut actions = Vec::<(Expression<'a>, Vec<Statement<'a>>)>::new();
+        let mut actions = Vec::<(Vec<Expression<'a>>, Vec<Statement<'a>>)>::new();
         while self.tokens.peek_next().is_some() {
+            self.skip_newlines_and_semicolons();
             match self.tokens.peek_next().unwrap().value {
                 TokenType::Eof => break,
                 TokenType::Begin => self.begin(&mut begin),
@@ -90,17 +102,23 @@ impl<'a> Parser<'a> {
         dest.push((name, statements));
     }
 
-    fn action(&mut self, dest: &mut Vec<(Expression<'a>, Vec<Statement<'a>>)>) {
-        let expression: Expression;
-        if self.check_one(TokenType::LeftCurly) {
-            expression = Expression::Empty;
-        } else {
-            expression = self.expression(ExpressionTrace::new());
+    fn action(&mut self, dest: &mut Vec<(Vec<Expression<'a>>, Vec<Statement<'a>>)>) {
+        let mut expressions = vec![];
+        while !self.check_one(TokenType::LeftCurly) {
+            expressions.push(self.expression(ExpressionTrace::new()));
+            if self.check_one(TokenType::Comma) {
+                self.advance_one(TokenType::Comma);
+            }
         }
-        self.advance_one(TokenType::LeftCurly);
-        let statements = self.statements();
-        self.advance_one(TokenType::RightCurly);
-        dest.push((expression, statements));
+        let mut statements = vec![];
+        if self.check_one(TokenType::LeftCurly) {
+            self.advance_one(TokenType::LeftCurly);
+            statements = self.statements();
+            self.advance_one(TokenType::RightCurly);
+        } else {
+            self.skip_newlines_and_semicolons();
+        }
+        dest.push((expressions, statements));
     }
 
     fn statements(&mut self) -> Vec<Statement<'a>> {
@@ -376,7 +394,7 @@ impl<'a> Parser<'a> {
                         );
                         self.extended_expression(expression, &mut trace)
                     }
-                    TokenType::Semicolon | TokenType::Eof => Expression::Empty,
+                    TokenType::Semicolon | TokenType::Newline | TokenType::Eof => Expression::Empty,
                     t => panic!(
                         "expected: expression, received {:?} @ {}:{}",
                         t, e.row, e.col
@@ -597,8 +615,9 @@ impl<'a> Parser<'a> {
     }
 
     fn skip_newlines_and_semicolons(&mut self) {
-        // handle trailing semicolons
-        while self.check_one(TokenType::Semicolon) | self.check_one(TokenType::Newline) {
+        while self.tokens.peek_next().is_some()
+            && (self.check_one(TokenType::Semicolon) | self.check_one(TokenType::Newline))
+        {
             self.tokens.next();
         }
     }
@@ -606,6 +625,10 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use regex::Regex;
+
     use super::*;
 
     #[test]
@@ -622,11 +645,11 @@ mod tests {
         assert_eq!(
             prog.actions,
             vec![(
-                Expression::Binary(
+                vec![Expression::Binary(
                     BinaryOperator::Equal,
                     Box::new(Expression::Variable("a")),
                     Box::new(Expression::Literal(PrimitiveType::Integer(1)))
-                ),
+                )],
                 Vec::<Statement>::new()
             )]
         )
@@ -649,6 +672,71 @@ mod tests {
     }
 
     #[test]
+    fn multi_action() {
+        // {}
+        // { print }
+        // (1) { print }
+        // /hello/, "world" {
+        //      print
+        //      print
+        // }
+        let tokens = vec![
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+            //
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+            //
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+            //
+            Token::new(TokenType::Newline, 0, 2),
+            Token::new(
+                TokenType::Literal(PrimitiveType::Pattern(Regex::from_str("hello").unwrap())),
+                0,
+                0,
+            ),
+            Token::new(TokenType::Comma, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("world")), 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Print, 1, 0),
+            Token::new(TokenType::Newline, 0, 3),
+            Token::new(TokenType::Print, 2, 0),
+            Token::new(TokenType::Newline, 0, 4),
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.actions,
+            vec![
+                (vec![], vec![]),
+                (vec![], vec![Statement::Print(vec![])]),
+                (
+                    vec![Expression::Grouping(Box::new(Expression::Literal(
+                        PrimitiveType::Integer(1)
+                    )))],
+                    vec![Statement::Print(vec![])]
+                ),
+                (
+                    vec![
+                        Expression::Literal(PrimitiveType::Pattern(
+                            Regex::from_str("hello").unwrap()
+                        )),
+                        Expression::Literal(PrimitiveType::String("world"))
+                    ],
+                    vec![Statement::Print(vec![]), Statement::Print(vec![])]
+                )
+            ]
+        )
+    }
+
+    #[test]
     fn print() {
         // {
         // print "hello", "world"
@@ -668,7 +756,7 @@ mod tests {
         assert_eq!(
             prog.actions,
             vec![(
-                Expression::Empty,
+                vec![],
                 vec![Statement::Print(vec![
                     Expression::Literal(PrimitiveType::String("hello")),
                     Expression::Literal(PrimitiveType::String("world"))
@@ -693,7 +781,7 @@ mod tests {
         let prog = p.parse();
         assert_eq!(
             prog.actions,
-            vec![(Expression::Empty, vec![Statement::Print(vec![]),])],
+            vec![(vec![], vec![Statement::Print(vec![]),])],
         )
     }
 
@@ -883,7 +971,6 @@ mod tests {
 
     #[test]
     fn binary_expr() {
-        // FIXME
         // END { a = 4 + 5 * 2 - a ^ 3 * (a-1) - 1 } ---> [ [4 + 5*2] - (a^3 * (a-1)) ] - 1
         let tokens = vec![
             Token::new(TokenType::End, 0, 0),
