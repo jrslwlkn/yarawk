@@ -59,6 +59,8 @@ pub enum BinaryOperator {
     Or,
     And,
     In,
+    Pipe,
+    Append, // technically not a binary operator though
 }
 
 impl BinaryOperator {
@@ -83,6 +85,8 @@ impl BinaryOperator {
             TokenType::And => Self::And,
             TokenType::Or => Self::Or,
             TokenType::Equal => Self::Equal,
+            TokenType::Pipe => Self::Pipe,
+            TokenType::RightRight => Self::Append,
             TokenType::PlusEqual
             | TokenType::MinusEqual
             | TokenType::StarEqual
@@ -110,6 +114,8 @@ impl BinaryOperator {
             BinaryOperator::And => 12,
             BinaryOperator::Or => 13,
             BinaryOperator::Equal => 14,
+            BinaryOperator::Pipe => 254, // handle these IO operators as binary operators for simplicity
+            BinaryOperator::Append => 254,
         }
     }
 }

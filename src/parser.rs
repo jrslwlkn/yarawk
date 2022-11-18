@@ -6,7 +6,6 @@ use crate::{
     token::{PrimitiveType, Token, TokenType},
 };
 
-#[derive(Debug)]
 pub struct Program<'a> {
     functions: Vec<(&'a str, Vec<Statement<'a>>)>,
     begin: Vec<Statement<'a>>,
@@ -536,6 +535,8 @@ impl<'a> Parser<'a> {
                 | TokenType::And
                 | TokenType::Or
                 | TokenType::In
+                | TokenType::Pipe
+                | TokenType::RightRight
                 | TokenType::Tilde
                 | TokenType::NotTilde => {
                     let op = BinaryOperator::convert(&t.value);
