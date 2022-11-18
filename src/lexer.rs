@@ -216,6 +216,7 @@ impl<'a> Lexer<'a> {
                 'd' if self.peek_ws("delete") => self.emit(TokenType::Delete, self.col, 6),
                 'e' if self.peek_ws("exit") => self.emit(TokenType::Exit, self.col, 4),
                 'f' if self.peek_ws("function") => self.emit(TokenType::Function, self.col, 8),
+                'g' if self.peek_ws("getline") => self.emit(TokenType::Getline, self.col, 7),
                 'i' if self.peek_ws("if") => self.emit(TokenType::If, self.col, 2),
                 'e' if self.peek_ws("else") => self.emit(TokenType::Else, self.col, 4),
                 'n' if self.peek_ws("next") => self.emit(TokenType::Next, self.col, 4),

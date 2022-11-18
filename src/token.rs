@@ -86,6 +86,7 @@ pub enum TokenType<'a> {
     Function,
     Print,
     Printf,
+    Getline,
     Delete,
     Eof,
 }

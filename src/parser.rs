@@ -322,6 +322,10 @@ impl<'a> Parser<'a> {
                             },
                         }
                     }
+                    TokenType::Getline => {
+                        self.skip_by(1);
+                        Expression::Getline(Box::new(self.expression(ExpressionTrace::new())))
+                    }
                     TokenType::Identifier(name)
                         if self.check(vec![TokenType::Identifier(""), TokenType::LeftParen]) =>
                     {
@@ -1635,6 +1639,43 @@ mod tests {
                         PrimitiveType::String("hello")
                     )]))],
                 ),
+            ]
+        )
+    }
+
+    #[test]
+    fn getline() {
+        let tokens = vec![
+            Token::new(TokenType::Begin, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            //
+            Token::new(TokenType::Getline, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            //
+            Token::new(TokenType::Getline, 0, 0),
+            Token::new(TokenType::Identifier("NF"), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            //
+            Token::new(TokenType::Getline, 0, 0),
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::LessThan, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("hey")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            //
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.begin,
+            vec![
+                Statement::Expression(Expression::Getline(Box::new(Expression::Empty))),
+                Statement::Expression(Expression::Getline(Box::new(Expression::Variable("NF")))),
+                Statement::Expression(Expression::Getline(Box::new(Expression::Binary(
+                    BinaryOperator::LessThan,
+                    Box::new(Expression::Variable("a")),
+                    Box::new(Expression::Literal(PrimitiveType::String("hey")))
+                )))),
             ]
         )
     }

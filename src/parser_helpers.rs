@@ -7,7 +7,6 @@ pub enum Statement<'a> {
     Continue,
     Next,
     Expression(Expression<'a>),
-    IoStatement,
     Print(Vec<Expression<'a>>),
     Exit(Expression<'a>),
     Return(Expression<'a>),
@@ -123,6 +122,7 @@ impl BinaryOperator {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Expression<'a> {
     Empty,
+    Getline(Box<Expression<'a>>),
     Literal(PrimitiveType<'a>),
     Variable(&'a str),
     FieldVariable(Box<Expression<'a>>),
