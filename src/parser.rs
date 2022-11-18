@@ -21,11 +21,6 @@ pub struct Parser<'a> {
 // FIXME: strings are regexes within ~ and !~ binary expressions
 //        strings are only requiring escaping the backslash
 //        however, only regexes are allowed as filters for actions
-// FIXME: handle pipes -> print | [sys command string]
-// FIXME: handle redirects -> print > [filename]
-// FIXME: handle printf statement (just like print but has format string first)
-// FIXME: handle optional redirect in print statements -> print "hello", "world" > [filename]
-// FIXME: in IO operations (print, getline) "<" means we're reading into our stuff, and ">" means we're writing
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a Vec<Token<'a>>) -> Self {
         Self {
@@ -141,21 +136,6 @@ impl<'a> Parser<'a> {
             ret.push(Box::new(self.statement()));
         }
         ret
-    }
-
-    fn is_io_print(&self) -> bool {
-        let mut i = 1;
-        loop {
-            match self.tokens.peek_nth(i) {
-                None => break,
-                Some(t) => match t.value {
-                    TokenType::Literal(PrimitiveType::String(_)) => return true,
-                    _ => {}
-                },
-            }
-            i += 1;
-        }
-        true
     }
 
     fn statement(&mut self) -> Statement<'a> {
@@ -291,13 +271,7 @@ impl<'a> Parser<'a> {
                     }
                     Statement::For(expression1, expression2, expression3, statements)
                 }
-                TokenType::LeftCurly => {
-                    self.advance_one(TokenType::LeftCurly);
-                    let block = Statement::Block(self.boxed_statements());
-                    self.advance_one(TokenType::RightCurly);
-                    block
-                }
-                _ => Statement::Expression(self.expression(ExpressionTrace::new())), // FIXME: io expressions ?
+                _ => Statement::Expression(self.expression(ExpressionTrace::new())),
             },
         };
         self.skip_newlines_and_semicolons();
@@ -1192,7 +1166,6 @@ mod tests {
 
     #[test]
     fn dollar_group() {
-        // FIXME
         // END { $(4+$(NF)) = "hello" }
         let tokens = vec![
             Token::new(TokenType::End, 0, 0),

@@ -3,7 +3,6 @@ use crate::token::{PrimitiveType, TokenType};
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum Statement<'a> {
     Empty,
-    Block(Vec<Box<Statement<'a>>>), // FIXME: what is this for?
     Break,
     Continue,
     Next,
@@ -223,45 +222,6 @@ impl<'a> ExpressionTrace<'a> {
         }
         self.stack.push(item);
         self
-    }
-}
-
-impl<'a> Expression<'a> {
-    fn precedence(&self) -> u8 {
-        match self {
-            Expression::Empty => 255,
-            Expression::Literal(_) => 255,
-            Expression::Variable(_) => 0,
-            Expression::Function(_, _) => 0,
-            Expression::Grouping(_) => 0,
-            Expression::Ternary(_, _, _) => 0,
-            Expression::ArrayVariable(_) => 1,
-            Expression::FieldVariable(_) => 2,
-            Expression::Unary(op, _) => match op {
-                UnaryOperator::PostPlusPlus
-                | UnaryOperator::PostMinusMinus
-                | UnaryOperator::PrePlusPlus
-                | UnaryOperator::PreMinusMinus => 3,
-                UnaryOperator::PrePlus | UnaryOperator::PreMinus | UnaryOperator::Not => 5,
-            },
-            Expression::Binary(op, _, _) => match op {
-                BinaryOperator::Exponent => 4,
-                BinaryOperator::Multiply | &BinaryOperator::Divide | BinaryOperator::Modulo => 6,
-                BinaryOperator::Plus | BinaryOperator::Minus => 7,
-                BinaryOperator::Concat => 8,
-                BinaryOperator::EqualEqual
-                | BinaryOperator::NotEqual
-                | BinaryOperator::LessThan
-                | BinaryOperator::LessEqual
-                | BinaryOperator::GreaterThan
-                | BinaryOperator::GreaterEqual => 9,
-                BinaryOperator::Match | BinaryOperator::NotMatch => 10,
-                BinaryOperator::In => 11,
-                BinaryOperator::And => 12,
-                BinaryOperator::Or => 13,
-                BinaryOperator::Equal => 15,
-            },
-        }
     }
 }
 

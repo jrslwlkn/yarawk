@@ -205,7 +205,7 @@ impl<'a> Lexer<'a> {
                 }
                 '<' if self.peek("<=") => self.emit(TokenType::LessEqual, self.col, 2),
                 '<' => self.emit(TokenType::LessThan, self.col, 1),
-                '>' if self.peek(">>") => self.emit(TokenType::LessLess, self.col, 2),
+                '>' if self.peek(">>") => self.emit(TokenType::RightRight, self.col, 2),
                 '>' if self.peek(">=") => self.emit(TokenType::GreaterEqual, self.col, 2),
                 '>' => self.emit(TokenType::GreaterThan, self.col, 1),
                 '&' if self.peek("&&") => self.emit(TokenType::And, self.col, 2),
