@@ -41,6 +41,7 @@ pub enum TokenType<'a> {
     EqualEqual,
     NotEqual,
     LessThan,
+    LessLess,
     GreaterThan,
     LessEqual,
     GreaterEqual,
@@ -53,6 +54,7 @@ pub enum TokenType<'a> {
     Question,
     Dollar,
     Newline,
+    Pipe,
 
     Plus,
     PlusPlus,
@@ -83,6 +85,7 @@ pub enum TokenType<'a> {
     Exit,
     Function,
     Print,
+    Printf,
     Delete,
     Eof,
 }
@@ -160,6 +163,8 @@ impl<'a> PartialEq for TokenType<'a> {
             (Self::Function, Self::Function) => true,
             (Self::Print, Self::Print) => true,
             (Self::Delete, Self::Delete) => true,
+            (Self::Pipe, Self::Pipe) => true,
+            (Self::LessLess, Self::LessLess) => true,
             (Self::Eof, Self::Eof) => true,
             (_, _) => false,
         }

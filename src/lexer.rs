@@ -205,10 +205,12 @@ impl<'a> Lexer<'a> {
                 }
                 '<' if self.peek("<=") => self.emit(TokenType::LessEqual, self.col, 2),
                 '<' => self.emit(TokenType::LessThan, self.col, 1),
+                '>' if self.peek(">>") => self.emit(TokenType::LessLess, self.col, 2),
                 '>' if self.peek(">=") => self.emit(TokenType::GreaterEqual, self.col, 2),
                 '>' => self.emit(TokenType::GreaterThan, self.col, 1),
                 '&' if self.peek("&&") => self.emit(TokenType::And, self.col, 2),
                 '|' if self.peek("||") => self.emit(TokenType::Or, self.col, 2),
+                '|' => self.emit(TokenType::Pipe, self.col, 1),
                 'B' if self.peek_ws("BEGIN") => self.emit(TokenType::Begin, self.col, 5),
                 'E' if self.peek_ws("END") => self.emit(TokenType::End, self.col, 3),
                 'd' if self.peek_ws("delete") => self.emit(TokenType::Delete, self.col, 6),
@@ -216,6 +218,7 @@ impl<'a> Lexer<'a> {
                 'f' if self.peek_ws("function") => self.emit(TokenType::Function, self.col, 8),
                 'i' if self.peek_ws("if") => self.emit(TokenType::If, self.col, 2),
                 'e' if self.peek_ws("else") => self.emit(TokenType::Else, self.col, 4),
+                'n' if self.peek_ws("next") => self.emit(TokenType::Next, self.col, 4),
                 'b' if self.peek_ws("break") => self.emit(TokenType::Break, self.col, 5),
                 'c' if self.peek_ws("continue") => self.emit(TokenType::Continue, self.col, 8),
                 'r' if self.peek_ws("return") => self.emit(TokenType::Return, self.col, 6),
@@ -223,6 +226,8 @@ impl<'a> Lexer<'a> {
                 'w' if self.peek_ws("while") => self.emit(TokenType::While, self.col, 5),
                 'f' if self.peek_ws("for") => self.emit(TokenType::For, self.col, 3),
                 'i' if self.peek_ws("in") => self.emit(TokenType::In, self.col, 2),
+                'p' if self.peek_ws("printf") => self.emit(TokenType::Printf, self.col, 6),
+                'p' if self.peek_ws("print") => self.emit(TokenType::Print, self.col, 5),
                 '\n' => {
                     match self.tokens.last() {
                         Some(t) => match t.value {
@@ -359,7 +364,7 @@ mod tests {
         let rhs = vec![
             Token::new(TokenType::Begin, 1, 1),
             Token::new(TokenType::LeftCurly, 1, 7),
-            Token::new(TokenType::Identifier("print"), 2, 5),
+            Token::new(TokenType::Print, 2, 5),
             Token::new(
                 TokenType::Literal(PrimitiveType::String("hello world")),
                 2,
