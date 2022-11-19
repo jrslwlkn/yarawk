@@ -324,7 +324,9 @@ impl<'a> Parser<'a> {
                     }
                     TokenType::Getline => {
                         self.skip_by(1);
-                        Expression::Getline(Box::new(self.expression(ExpressionTrace::new())))
+                        let ret =
+                            Expression::Getline(Box::new(self.expression(ExpressionTrace::new())));
+                        self.extended_expression(ret, &mut trace)
                     }
                     TokenType::Identifier(name)
                         if self.check(vec![TokenType::Identifier(""), TokenType::LeftParen]) =>
@@ -1639,6 +1641,71 @@ mod tests {
                         PrimitiveType::String("hello")
                     )]))],
                 ),
+            ]
+        )
+    }
+
+    #[test]
+    fn pipe_and_append() {
+        let tokens = vec![
+            Token::new(TokenType::Begin, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            //
+            // $0 | getline
+            Token::new(TokenType::Dollar, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(0)), 0, 0),
+            Token::new(TokenType::Pipe, 0, 0),
+            Token::new(TokenType::Getline, 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            //
+            // "hello" "world" | "filename"
+            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("world")), 0, 0),
+            Token::new(TokenType::Pipe, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("filename")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            //
+            //
+            // print "hello" "world" >> "filename"
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("world")), 0, 0),
+            Token::new(TokenType::RightRight, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("filename")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            //
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.begin,
+            vec![
+                Statement::Expression(Expression::Binary(
+                    BinaryOperator::Pipe,
+                    Box::new(Expression::FieldVariable(Box::new(Expression::Literal(
+                        PrimitiveType::Integer(0)
+                    )))),
+                    Box::new(Expression::Getline(Box::new(Expression::Empty)))
+                )),
+                Statement::Expression(Expression::Binary(
+                    BinaryOperator::Pipe,
+                    Box::new(Expression::Binary(
+                        BinaryOperator::Concat,
+                        Box::new(Expression::Literal(PrimitiveType::String("hello"))),
+                        Box::new(Expression::Literal(PrimitiveType::String("world"))),
+                    )),
+                    Box::new(Expression::Literal(PrimitiveType::String("filename")))
+                )),
+                Statement::Print(vec![Expression::Binary(
+                    BinaryOperator::Append,
+                    Box::new(Expression::Binary(
+                        BinaryOperator::Concat,
+                        Box::new(Expression::Literal(PrimitiveType::String("hello"))),
+                        Box::new(Expression::Literal(PrimitiveType::String("world"))),
+                    )),
+                    Box::new(Expression::Literal(PrimitiveType::String("filename")))
+                )]),
             ]
         )
     }
