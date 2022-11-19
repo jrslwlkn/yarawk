@@ -290,8 +290,7 @@ impl<'a> Parser<'a> {
                     }
                     TokenType::LeftParen => {
                         self.skip_by(1);
-                        expression =
-                            Expression::Grouping(Box::new(self.expression(ExpressionTrace::new())));
+                        expression = Expression::Grouping(self.boxed_comma_separated_expressions());
                         let ret = self.extended_expression(expression, &mut trace);
                         self.advance_one(TokenType::RightParen);
                         self.extended_expression(ret, &mut trace)
@@ -334,18 +333,8 @@ impl<'a> Parser<'a> {
                         // parse function call
                         let n = *name;
                         self.skip_by(2);
-                        let mut args = Vec::<Expression>::new();
-                        let mut is_first = true;
-                        while self.tokens.current().is_some()
-                            && !self.check_one(TokenType::RightParen)
-                        {
-                            if !is_first {
-                                self.advance_one(TokenType::Comma);
-                            }
-                            args.push(self.expression(ExpressionTrace::new()));
-                            is_first = false;
-                        }
-                        let mut ret = Expression::Function(n, Box::new(args));
+                        let mut ret =
+                            Expression::Function(n, Box::new(self.comma_separated_expressions()));
                         ret = self.extended_expression(ret, &mut trace);
                         self.advance_one(TokenType::RightParen);
                         ret
@@ -353,11 +342,10 @@ impl<'a> Parser<'a> {
                     TokenType::Identifier(_)
                         if self.check(vec![TokenType::Identifier(""), TokenType::LeftBracket]) =>
                     {
-                        // parse (associative?) array access
+                        // parse (associative/multidimentional/regular) array access
                         self.skip_by(2);
-                        let mut ret = Expression::ArrayVariable(Box::new(
-                            self.expression(ExpressionTrace::new()),
-                        ));
+                        let mut ret =
+                            Expression::ArrayVariable(self.boxed_comma_separated_expressions());
                         ret = self.extended_expression(ret, &mut trace);
                         self.advance_one(TokenType::RightBracket);
                         ret
@@ -557,6 +545,38 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn comma_separated_expressions(&mut self) -> Vec<Expression<'a>> {
+        let mut ret = Vec::<Expression<'a>>::new();
+        let mut is_first = true;
+        while self.tokens.current().is_some()
+            && !self.check_one(TokenType::RightParen)
+            && !self.check_one(TokenType::RightBracket)
+        {
+            if !is_first {
+                self.advance_one(TokenType::Comma);
+            }
+            ret.push(self.expression(ExpressionTrace::new()));
+            is_first = false;
+        }
+        ret
+    }
+
+    fn boxed_comma_separated_expressions(&mut self) -> Vec<Box<Expression<'a>>> {
+        let mut ret = Vec::<Box<Expression<'a>>>::new();
+        let mut is_first = true;
+        while self.tokens.current().is_some()
+            && !self.check_one(TokenType::RightParen)
+            && !self.check_one(TokenType::RightBracket)
+        {
+            if !is_first {
+                self.advance_one(TokenType::Comma);
+            }
+            ret.push(Box::new(self.expression(ExpressionTrace::new())));
+            is_first = false;
+        }
+        ret
+    }
+
     fn check(&self, types: Vec<TokenType<'a>>) -> bool {
         let mut cur = self.tokens.clone();
         for t in types {
@@ -718,9 +738,9 @@ mod tests {
                 (vec![], vec![]),
                 (vec![], vec![Statement::Print(vec![])]),
                 (
-                    vec![Expression::Grouping(Box::new(Expression::Literal(
+                    vec![Expression::Grouping(vec![Box::new(Expression::Literal(
                         PrimitiveType::Integer(1)
-                    )))],
+                    ))])],
                     vec![Statement::Print(vec![])]
                 ),
                 (
@@ -956,16 +976,16 @@ mod tests {
         let prog = p.parse();
         assert_eq!(
             prog.end,
-            vec![Statement::Print(vec![Expression::Grouping(Box::new(
-                Expression::Binary(
+            vec![Statement::Print(vec![Expression::Grouping(vec![
+                Box::new(Expression::Binary(
                     BinaryOperator::Plus,
                     Box::new(Expression::Unary(
                         UnaryOperator::PostPlusPlus,
                         Box::new(Expression::Variable("a"))
                     )),
                     Box::new(Expression::Literal(PrimitiveType::Integer(42)))
-                )
-            ))])]
+                ))
+            ])])]
         )
     }
 
@@ -1023,11 +1043,11 @@ mod tests {
                                 Box::new(Expression::Variable("a")),
                                 Box::new(Expression::Literal(PrimitiveType::Integer(3)))
                             )),
-                            Box::new(Expression::Grouping(Box::new(Expression::Binary(
+                            Box::new(Expression::Grouping(vec![Box::new(Expression::Binary(
                                 BinaryOperator::Minus,
                                 Box::new(Expression::Variable("a")),
                                 Box::new(Expression::Literal(PrimitiveType::Integer(1)))
-                            ))))
+                            ))]))
                         ))
                     )),
                     Box::new(Expression::Literal(PrimitiveType::Integer(1)))

@@ -26,6 +26,25 @@ pub enum Statement<'a> {
     ),
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum Expression<'a> {
+    Empty,
+    Getline(Box<Expression<'a>>),
+    Literal(PrimitiveType<'a>),
+    Variable(&'a str),
+    FieldVariable(Box<Expression<'a>>),
+    ArrayVariable(Vec<Box<Expression<'a>>>),
+    Grouping(Vec<Box<Expression<'a>>>),
+    Function(&'a str, Box<Vec<Expression<'a>>>),
+    Unary(UnaryOperator, Box<Expression<'a>>),
+    Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
+    Ternary(
+        Box<Expression<'a>>,
+        Box<Expression<'a>>,
+        Box<Expression<'a>>,
+    ),
+}
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum UnaryOperator {
     PrePlus,
@@ -60,6 +79,17 @@ pub enum BinaryOperator {
     In,
     Pipe,
     Append, // technically not a binary operator though
+}
+
+#[derive(Clone, Debug)]
+pub struct ExpressionTrace<'a> {
+    stack: Vec<ExpressionItem<'a>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ExpressionItem<'a> {
+    Expression(Expression<'a>),
+    IncompleteBinary(BinaryOperator),
 }
 
 impl BinaryOperator {
@@ -117,36 +147,6 @@ impl BinaryOperator {
             BinaryOperator::Append => 254,
         }
     }
-}
-
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum Expression<'a> {
-    Empty,
-    Getline(Box<Expression<'a>>),
-    Literal(PrimitiveType<'a>),
-    Variable(&'a str),
-    FieldVariable(Box<Expression<'a>>),
-    ArrayVariable(Box<Expression<'a>>),
-    Grouping(Box<Expression<'a>>),
-    Function(&'a str, Box<Vec<Expression<'a>>>),
-    Unary(UnaryOperator, Box<Expression<'a>>),
-    Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
-    Ternary(
-        Box<Expression<'a>>,
-        Box<Expression<'a>>,
-        Box<Expression<'a>>,
-    ),
-}
-
-#[derive(Clone, Debug)]
-pub enum ExpressionItem<'a> {
-    Expression(Expression<'a>),
-    IncompleteBinary(BinaryOperator),
-}
-
-#[derive(Clone, Debug)]
-pub struct ExpressionTrace<'a> {
-    stack: Vec<ExpressionItem<'a>>,
 }
 
 impl<'a> ExpressionTrace<'a> {
