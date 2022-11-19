@@ -175,8 +175,20 @@ impl<'a> Parser<'a> {
                         if !is_first {
                             self.advance_one(TokenType::Comma);
                         }
+                        if is_first && self.check_one(TokenType::GreaterThan) {
+                            // this is an io operation like "print > filename"
+                            self.skip_by(1);
+                            args.push(Expression::Binary(
+                                BinaryOperator::GreaterThan,
+                                Box::new(Expression::Empty),
+                                Box::new(self.expression(ExpressionTrace::new())),
+                            ));
+                        } else {
+                            // cases like "print string > filename"
+                            // and normal expressions
+                            args.push(self.expression(ExpressionTrace::new()));
+                        }
                         is_first = false;
-                        args.push(self.expression(ExpressionTrace::new()));
                     }
                     self.skip_newlines_and_semicolons();
                     Statement::Print(args)
@@ -789,19 +801,38 @@ mod tests {
     fn print2() {
         // {
         // print
+        //
+        // print > "filename"
         //  }
         let tokens = vec![
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::Newline, 0, 0),
+            //
             Token::new(TokenType::Print, 0, 0),
             Token::new(TokenType::Newline, 0, 0),
+            //
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::GreaterThan, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("filename")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            //
             Token::new(TokenType::RightCurly, 0, 0),
         ];
         let mut p = Parser::new(&tokens);
         let prog = p.parse();
         assert_eq!(
             prog.actions,
-            vec![(vec![], vec![Statement::Print(vec![]),])],
+            vec![(
+                vec![],
+                vec![
+                    Statement::Print(vec![]),
+                    Statement::Print(vec![Expression::Binary(
+                        BinaryOperator::GreaterThan,
+                        Box::new(Expression::Empty),
+                        Box::new(Expression::Literal(PrimitiveType::String("filename")))
+                    )])
+                ]
+            )],
         )
     }
 
