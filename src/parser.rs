@@ -95,6 +95,7 @@ impl<'a> Parser<'a> {
     }
 
     fn action(&mut self, dest: &mut Vec<(Vec<Expression<'a>>, Vec<Statement<'a>>)>) {
+        self.skip_newlines_and_semicolons();
         let mut expressions = vec![];
         while !self.check_one(TokenType::LeftCurly) {
             expressions.push(self.expression(ExpressionTrace::new()));
@@ -666,24 +667,32 @@ mod tests {
     #[test]
     fn sample() {
         let tokens = vec![
+            // a = 1 { } ; { print }
             Token::new(TokenType::Identifier("a"), 0, 0),
             Token::new(TokenType::Equal, 0, 0),
             Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
             Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
             Token::new(TokenType::RightCurly, 0, 0),
         ];
         let mut p = Parser::new(&tokens);
         let prog = p.parse();
         assert_eq!(
             prog.actions,
-            vec![(
-                vec![Expression::Binary(
-                    BinaryOperator::Equal,
-                    Box::new(Expression::Variable("a")),
-                    Box::new(Expression::Literal(PrimitiveType::Integer(1)))
-                )],
-                Vec::<Statement>::new()
-            )]
+            vec![
+                (
+                    vec![Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(Expression::Variable("a")),
+                        Box::new(Expression::Literal(PrimitiveType::Integer(1)))
+                    )],
+                    vec![]
+                ),
+                (vec![], vec![Statement::Print(vec![])])
+            ]
         )
     }
 
