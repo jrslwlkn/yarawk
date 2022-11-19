@@ -336,8 +336,17 @@ impl<'a> Parser<'a> {
                     }
                     TokenType::Getline => {
                         self.skip_by(1);
-                        let ret =
-                            Expression::Getline(Box::new(self.expression(ExpressionTrace::new())));
+                        let inner = if self.check_one(TokenType::LessThan) {
+                            self.skip_by(1);
+                            Expression::Binary(
+                                BinaryOperator::LessThan,
+                                Box::new(Expression::Empty),
+                                Box::new(self.expression(ExpressionTrace::new())),
+                            )
+                        } else {
+                            self.expression(ExpressionTrace::new())
+                        };
+                        let ret = Expression::Getline(Box::new(inner));
                         self.extended_expression(ret, &mut trace)
                     }
                     TokenType::Identifier(name)
@@ -1776,15 +1785,24 @@ mod tests {
             Token::new(TokenType::Begin, 0, 0),
             Token::new(TokenType::LeftCurly, 0, 0),
             //
+            // getline \n
             Token::new(TokenType::Getline, 0, 0),
             Token::new(TokenType::Newline, 0, 0),
             //
+            // getline NF \n
             Token::new(TokenType::Getline, 0, 0),
             Token::new(TokenType::Identifier("NF"), 0, 0),
             Token::new(TokenType::Newline, 0, 0),
             //
+            // getline a < "hey" \n
             Token::new(TokenType::Getline, 0, 0),
             Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::LessThan, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::String("hey")), 0, 0),
+            Token::new(TokenType::Newline, 0, 0),
+            //
+            // getline < "hey" \n
+            Token::new(TokenType::Getline, 0, 0),
             Token::new(TokenType::LessThan, 0, 0),
             Token::new(TokenType::Literal(PrimitiveType::String("hey")), 0, 0),
             Token::new(TokenType::Newline, 0, 0),
@@ -1801,6 +1819,11 @@ mod tests {
                 Statement::Expression(Expression::Getline(Box::new(Expression::Binary(
                     BinaryOperator::LessThan,
                     Box::new(Expression::Variable("a")),
+                    Box::new(Expression::Literal(PrimitiveType::String("hey")))
+                )))),
+                Statement::Expression(Expression::Getline(Box::new(Expression::Binary(
+                    BinaryOperator::LessThan,
+                    Box::new(Expression::Empty),
                     Box::new(Expression::Literal(PrimitiveType::String("hey")))
                 )))),
             ]
