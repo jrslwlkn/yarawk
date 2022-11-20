@@ -20,7 +20,7 @@ pub enum Statement<'a> {
     While(Expression<'a>, Vec<Box<Statement<'a>>>),
     For(
         Expression<'a>,
-        Expression<'a>,
+        Option<Expression<'a>>,
         Option<Expression<'a>>,
         Vec<Box<Statement<'a>>>,
     ),
@@ -33,7 +33,7 @@ pub enum Expression<'a> {
     Literal(PrimitiveType<'a>),
     Variable(&'a str),
     FieldVariable(Box<Expression<'a>>),
-    ArrayVariable(Vec<Box<Expression<'a>>>),
+    ArrayVariable(&'a str, Vec<Box<Expression<'a>>>),
     Grouping(Vec<Box<Expression<'a>>>),
     Function(&'a str, Box<Vec<Expression<'a>>>),
     Unary(UnaryOperator, Box<Expression<'a>>),

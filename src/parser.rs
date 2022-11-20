@@ -255,31 +255,29 @@ impl<'a> Parser<'a> {
                 TokenType::For => {
                     self.advance(vec![TokenType::For, TokenType::LeftParen]);
                     let expression1 = self.expression(ExpressionTrace::new());
-                    let expression2: Expression;
+                    let mut expression2: Option<Expression> = None;
                     let mut expression3: Option<Expression> = None;
                     if self.check_one(TokenType::Semicolon) {
+                        self.skip_by(1);
+                        expression2 = Some(self.expression(ExpressionTrace::new()));
                         self.advance_one(TokenType::Semicolon);
-                        expression2 = self.expression(ExpressionTrace::new());
-                        self.advance_one(TokenType::Semicolon);
-                        expression3 = Some(self.expression(ExpressionTrace::new()));
-                    } else if self.check_one(TokenType::In) {
-                        self.advance_one(TokenType::In);
-                        expression2 = self.expression(ExpressionTrace::new());
-                    } else {
-                        panic!(
-                            "expected: `;` or `in` @ {}:{}",
-                            self.tokens.clone().current().unwrap().row,
-                            self.tokens.clone().current().unwrap().col
-                        );
+                        expression3 = Some(if self.check_one(TokenType::RightParen) {
+                            Expression::Empty
+                        } else {
+                            self.expression(ExpressionTrace::new())
+                        })
                     }
                     self.advance_one(TokenType::RightParen);
                     let mut statements = Vec::<Box<Statement<'a>>>::new();
                     if self.check_one(TokenType::LeftCurly) {
-                        self.advance_one(TokenType::LeftCurly);
+                        self.skip_by(1);
                         statements.extend(self.boxed_statements());
                         self.advance_one(TokenType::RightCurly);
                     } else {
-                        statements.extend(self.boxed_statements());
+                        let s = self.statement();
+                        if s != Statement::Empty && s != Statement::Expression(Expression::Empty) {
+                            statements.push(Box::new(s));
+                        }
                     }
                     Statement::For(expression1, expression2, expression3, statements)
                 }
@@ -361,13 +359,14 @@ impl<'a> Parser<'a> {
                         self.advance_one(TokenType::RightParen);
                         ret
                     }
-                    TokenType::Identifier(_)
+                    TokenType::Identifier(name)
                         if self.check(vec![TokenType::Identifier(""), TokenType::LeftBracket]) =>
                     {
                         // parse (associative/multidimentional/regular) array access
+                        let n = *name;
                         self.skip_by(2);
                         let mut ret =
-                            Expression::ArrayVariable(self.boxed_comma_separated_expressions());
+                            Expression::ArrayVariable(n, self.boxed_comma_separated_expressions());
                         ret = self.extended_expression(ret, &mut trace);
                         self.advance_one(TokenType::RightBracket);
                         ret
@@ -1709,6 +1708,149 @@ mod tests {
                     vec![Box::new(Statement::Print(vec![Expression::Literal(
                         PrimitiveType::String("hello")
                     )]))],
+                ),
+            ]
+        )
+    }
+
+    #[test]
+    fn for1() {
+        let tokens = vec![
+            Token::new(TokenType::End, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            //
+            // for (;;) ;
+            Token::new(TokenType::For, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            //
+            // for (;;) {}
+            Token::new(TokenType::For, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+            //
+            // for (i = 0; i < 10; ++i) { print i }
+            Token::new(TokenType::For, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Identifier("i"), 0, 0),
+            Token::new(TokenType::Equal, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(0)), 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            Token::new(TokenType::Identifier("i"), 0, 0),
+            Token::new(TokenType::LessThan, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(10)), 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            Token::new(TokenType::PlusPlus, 0, 0),
+            Token::new(TokenType::Identifier("i"), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Identifier("i"), 0, 0),
+            Token::new(TokenType::RightCurly, 0, 0),
+            //
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.end,
+            vec![
+                Statement::For(
+                    Expression::Empty,
+                    Some(Expression::Empty),
+                    Some(Expression::Empty),
+                    vec![]
+                ),
+                Statement::For(
+                    Expression::Empty,
+                    Some(Expression::Empty),
+                    Some(Expression::Empty),
+                    vec![]
+                ),
+                Statement::For(
+                    Expression::Binary(
+                        BinaryOperator::Equal,
+                        Box::new(Expression::Variable("i")),
+                        Box::new(Expression::Literal(PrimitiveType::Integer(0)))
+                    ),
+                    Some(Expression::Binary(
+                        BinaryOperator::LessThan,
+                        Box::new(Expression::Variable("i")),
+                        Box::new(Expression::Literal(PrimitiveType::Integer(10)))
+                    )),
+                    Some(Expression::Unary(
+                        UnaryOperator::PrePlusPlus,
+                        Box::new(Expression::Variable("i"))
+                    )),
+                    vec![Box::new(Statement::Print(vec![Expression::Variable("i")]))]
+                ),
+            ]
+        )
+    }
+
+    #[test]
+    fn for2() {
+        let tokens = vec![
+            Token::new(TokenType::End, 0, 0),
+            Token::new(TokenType::LeftCurly, 0, 0),
+            //
+            // for (a in b) ;
+            Token::new(TokenType::For, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::In, 0, 0),
+            Token::new(TokenType::Identifier("b"), 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            //
+            // for (a in b[c]) ;
+            Token::new(TokenType::For, 0, 0),
+            Token::new(TokenType::LeftParen, 0, 0),
+            Token::new(TokenType::Identifier("a"), 0, 0),
+            Token::new(TokenType::In, 0, 0),
+            Token::new(TokenType::Identifier("b"), 0, 0),
+            Token::new(TokenType::LeftBracket, 0, 0),
+            Token::new(TokenType::Identifier("c"), 0, 0),
+            Token::new(TokenType::RightBracket, 0, 0),
+            Token::new(TokenType::RightParen, 0, 0),
+            Token::new(TokenType::Semicolon, 0, 0),
+            //
+            Token::new(TokenType::RightCurly, 0, 0),
+        ];
+        let mut p = Parser::new(&tokens);
+        let prog = p.parse();
+        assert_eq!(
+            prog.end,
+            vec![
+                Statement::For(
+                    Expression::Binary(
+                        BinaryOperator::In,
+                        Box::new(Expression::Variable("a")),
+                        Box::new(Expression::Variable("b",))
+                    ),
+                    None,
+                    None,
+                    vec![]
+                ),
+                Statement::For(
+                    Expression::Binary(
+                        BinaryOperator::In,
+                        Box::new(Expression::Variable("a")),
+                        Box::new(Expression::ArrayVariable(
+                            "b",
+                            vec![Box::new(Expression::Variable("c"))]
+                        ))
+                    ),
+                    None,
+                    None,
+                    vec![]
                 ),
             ]
         )
