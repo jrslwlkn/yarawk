@@ -12,13 +12,14 @@ use crate::{
 };
 
 pub struct Environment<'a> {
-    program: Program<'a>,
+    program: &'a Program<'a>,
     variables: HashMap<String, Value<'a>>,
-    functions: HashMap<String, Box<dyn Fn(Vec<Value<'a>>) -> Value<'a>>>,
+    functions: HashMap<String, Box<fn(Vec<Value<'a>>) -> Value<'a>>>,
 }
 
 #[derive(Debug)]
 pub enum Value<'a> {
+    Empty,
     PrimitiveType(PrimitiveType<'a>),
     ArrayType(HashMap<String, PrimitiveType<'a>>),
 }
@@ -27,9 +28,15 @@ pub enum Value<'a> {
 //        strings are only requiring escaping the backslash
 //        however, only regexes are allowed as filters for actions
 impl<'a> Environment<'a> {
-    pub fn new(program: Program<'a>) -> Self {
-        let mut variables = HashMap::new(); // FIXME: set global variables
-        let mut functions = HashMap::new(); // FIXME: set built-in functions
+    pub fn new(program: &'a Program<'a>) -> Self {
+        let variables = HashMap::new(); // FIXME: set global variables
+        let mut functions = HashMap::new(); // FIXME: set built-in functions before user-defined ones
+        for (name, statements) in &program.functions {
+            if functions.contains_key(*name) {
+                panic!("function {} already exists", name)
+            }
+            functions.insert(name.to_string(), Environment::make_function(&statements));
+        }
         Self {
             program,
             variables,
@@ -41,8 +48,22 @@ impl<'a> Environment<'a> {
         self.variables.insert(name, val);
     }
 
-    pub fn execute(&mut self) {
-        todo!()
+    pub fn execute_begin(&mut self) {
+        for s in &self.program.begin {
+            self.visit(&s);
+        }
+    }
+
+    pub fn execute_end(&mut self) {
+        for s in &self.program.end {
+            self.visit(&s);
+        }
+    }
+
+    pub fn execute_actions(&mut self, line: &String) {
+        for (expressions, statements) in &self.program.actions {
+            todo!()
+        }
     }
 
     fn visit(&mut self, statement: &Statement<'a>) {
@@ -60,7 +81,12 @@ impl<'a> Environment<'a> {
             Value::PrimitiveType(PrimitiveType::String(v)) => *v != "",
             Value::PrimitiveType(PrimitiveType::Pattern(_)) => true, // FIXME: ?
             Value::ArrayType(_) => true,
+            Value::Empty => false,
         }
+    }
+
+    fn make_function(statements: &Vec<Statement<'a>>) -> Box<fn(Vec<Value<'a>>) -> Value<'a>> {
+        todo!()
     }
 }
 

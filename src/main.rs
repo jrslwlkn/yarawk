@@ -5,7 +5,7 @@ use crate::token::PrimitiveType;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 
 pub mod executor;
 pub mod lexer;
@@ -78,17 +78,30 @@ fn main() {
     let prog = parser.parse();
     println!("{:#?}", prog);
 
-    let mut env = Environment::new(prog);
+    let mut env = Environment::new(&prog);
     for (name, val) in preset_vars {
         env.set_variable(name.to_string(), Value::from_str(val));
     }
-    env.set_variable("ARGC".to_string(), Value::from_int(argv.len() as i64));
+    env.set_variable("ARGC".to_string(), Value::from_int(argv.len() as i64 + 1));
     let mut argv_var = HashMap::<String, PrimitiveType>::new();
+    argv_var.insert(format!("{}", 0), PrimitiveType::String("yarawk"));
     for (i, val) in argv.iter().enumerate() {
-        argv_var.insert(format!("{}", i), PrimitiveType::String(val));
+        argv_var.insert(format!("{}", i + 1), PrimitiveType::String(val));
     }
     env.set_variable("ARGV".to_string(), Value::from_array(argv_var));
-    env.execute();
+
+    env.execute_begin();
+    for filepath in argv {
+        let file =
+            File::open(filepath).expect(format!("unable to open file: {}", filepath).as_str());
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            env.execute_actions(
+                &line.expect(format!("unable to read file: {}", filepath).as_str()),
+            );
+        }
+    }
+    env.execute_end();
 }
 
 fn get_kv_pair(input: &str) -> Option<(&str, &str)> {
