@@ -6,20 +6,18 @@ use crate::{
     token::{PrimitiveType, Token, TokenType},
 };
 
+#[derive(Debug)]
 pub struct Program<'a> {
-    functions: Vec<(&'a str, Vec<Statement<'a>>)>,
-    begin: Vec<Statement<'a>>,
-    end: Vec<Statement<'a>>,
-    actions: Vec<(Vec<Expression<'a>>, Vec<Statement<'a>>)>,
+    pub functions: Vec<(&'a str, Vec<Statement<'a>>)>,
+    pub begin: Vec<Statement<'a>>,
+    pub end: Vec<Statement<'a>>,
+    pub actions: Vec<(Vec<Expression<'a>>, Vec<Statement<'a>>)>,
 }
 
 pub struct Parser<'a> {
     tokens: Iterator<'a, Token<'a>>,
 }
 
-// FIXME: strings are regexes within ~ and !~ binary expressions
-//        strings are only requiring escaping the backslash
-//        however, only regexes are allowed as filters for actions
 impl<'a> Parser<'a> {
     pub fn new(tokens: &'a Vec<Token<'a>>) -> Self {
         Self {
