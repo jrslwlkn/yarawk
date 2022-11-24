@@ -14,10 +14,10 @@ use crate::{
 pub struct Environment<'a> {
     program: &'a Program<'a>,
     variables: HashMap<String, Value<'a>>,
-    functions: HashMap<String, Box<fn(Vec<Value<'a>>) -> Value<'a>>>,
+    functions: HashMap<String, (u8, Vec<Statement<'a>>)>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Value<'a> {
     Empty,
     PrimitiveType(PrimitiveType<'a>),
@@ -30,18 +30,19 @@ pub enum Value<'a> {
 impl<'a> Environment<'a> {
     pub fn new(program: &'a Program<'a>) -> Self {
         let variables = HashMap::new(); // FIXME: set global variables
-        let mut functions = HashMap::new(); // FIXME: set built-in functions before user-defined ones
-        for (name, statements) in &program.functions {
-            if functions.contains_key(*name) {
-                panic!("function {} already exists", name)
-            }
-            functions.insert(name.to_string(), Environment::make_function(&statements));
-        }
-        Self {
+        let mut ret = Self {
             program,
             variables,
-            functions,
+            functions: HashMap::new(), // FIXME: set built-in functions before user-defined ones
+        };
+        for (name, arity, statements) in &program.functions {
+            if ret.functions.contains_key(*name) {
+                panic!("function {} already exists", name)
+            }
+            ret.functions
+                .insert(name.to_string(), (*arity, statements.clone()));
         }
+        ret
     }
 
     pub fn set_variable(&mut self, name: String, val: Value<'a>) {
@@ -50,13 +51,13 @@ impl<'a> Environment<'a> {
 
     pub fn execute_begin(&mut self) {
         for s in &self.program.begin {
-            self.visit(&s);
+            self.execute_one(&s);
         }
     }
 
     pub fn execute_end(&mut self) {
         for s in &self.program.end {
-            self.visit(&s);
+            self.execute_one(&s);
         }
     }
 
@@ -66,11 +67,58 @@ impl<'a> Environment<'a> {
         }
     }
 
-    fn visit(&mut self, statement: &Statement<'a>) {
-        todo!()
+    fn execute(&mut self, statements: &Vec<Box<Statement<'a>>>) -> Value<'a> {
+        let mut ret = Value::Empty;
+        for s in statements {
+            let val = self.execute_one(s);
+            match val {
+                Value::Empty => {}
+                val => {
+                    // here we assume that if a statement returns a value, it must be a return or exit.
+                    ret = val;
+                    break;
+                }
+            }
+        }
+        ret
     }
 
-    fn evaluate(&mut self, expression: &Expression<'a>) -> Value {
+    fn execute_one(&mut self, statement: &Statement<'a>) -> Value<'a> {
+        match statement {
+            Statement::Empty => Value::Empty,
+            Statement::Exit(e) => {
+                std::process::exit(self.evaluate(&e).as_int().try_into().unwrap_or(-69420));
+            }
+            Statement::Return(e) => self.evaluate(e),
+            Statement::If(cond, truthy, falsy) => {
+                if (Environment::is_truthy(&self.evaluate(cond))) {
+                    self.execute(truthy)
+                } else {
+                    self.execute(falsy)
+                }
+            }
+            Statement::DoWhile(statements, cond) => {
+                todo!()
+            }
+            Statement::While(cond, statemens) => {
+                todo!()
+            }
+            Statement::For(cond, Some(e1), Some(e2), statements) => {
+                todo!()
+            }
+            Statement::For(cond, None, None, statements) => {
+                todo!()
+            }
+            Statement::Expression(e) => {
+                self.evaluate(e);
+                Value::Empty
+            }
+            Statement::Print(_) => todo!(),
+            _ => panic!("unexpected statement: {:?}", statement),
+        }
+    }
+
+    fn evaluate(&mut self, expression: &Expression<'a>) -> Value<'a> {
         todo!()
     }
 
@@ -79,14 +127,10 @@ impl<'a> Environment<'a> {
             Value::PrimitiveType(PrimitiveType::Integer(v)) => *v != 0,
             Value::PrimitiveType(PrimitiveType::Float(v)) => *v != 0.0,
             Value::PrimitiveType(PrimitiveType::String(v)) => *v != "",
-            Value::PrimitiveType(PrimitiveType::Pattern(_)) => true, // FIXME: ?
+            Value::PrimitiveType(PrimitiveType::Pattern(_)) => true,
             Value::ArrayType(_) => true,
             Value::Empty => false,
         }
-    }
-
-    fn make_function(statements: &Vec<Statement<'a>>) -> Box<fn(Vec<Value<'a>>) -> Value<'a>> {
-        todo!()
     }
 }
 
@@ -95,8 +139,46 @@ impl<'a> Value<'a> {
         Self::PrimitiveType(PrimitiveType::String(val))
     }
 
+    pub fn as_str(&self) -> String {
+        match self {
+            Self::Empty => "".to_string(),
+            Self::PrimitiveType(val) => val.to_string(),
+            Self::ArrayType(elements) => {
+                let mut ret = String::new();
+                ret.push_str("[");
+                for (k, v) in elements {
+                    ret.push_str(k);
+                    ret.push_str(": ");
+                    ret.push_str(v.to_string().as_str());
+                    ret.push_str(", ");
+                }
+                if !elements.is_empty() {
+                    ret = ret[0..ret.len() - 2].to_string();
+                }
+                ret.push_str("]");
+                ret
+            }
+        }
+    }
+
     pub fn from_int(val: i64) -> Self {
         Self::PrimitiveType(PrimitiveType::Integer(val))
+    }
+
+    pub fn as_int(&self) -> i64 {
+        match self {
+            Self::Empty => 0,
+            Self::PrimitiveType(val) => match val {
+                PrimitiveType::Integer(v) => *v,
+                PrimitiveType::Float(v) => *v as i64,
+                PrimitiveType::String(v) => match v.parse::<i64>() {
+                    Ok(ret) => ret,
+                    Err(_) => 0,
+                },
+                PrimitiveType::Pattern(_) => 0,
+            },
+            Self::ArrayType(_) => 0,
+        }
     }
 
     pub fn from_float(val: f64) -> Self {
