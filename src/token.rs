@@ -14,8 +14,19 @@ impl<'a> PartialEq for PrimitiveType<'a> {
             (Self::String(a), Self::String(b)) => a == b,
             (Self::Pattern(a), Self::Pattern(b)) => a.to_string() == b.to_string(),
             (Self::Integer(a), Self::Integer(b)) => a == b,
-            (Self::Float(a), Self::Float(b)) => a.to_string() == b.to_string(),
+            (Self::Float(a), Self::Float(b)) => a == b,
             _ => false,
+        }
+    }
+}
+
+impl<'a> PrimitiveType<'a> {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::String(val) => val.to_string(),
+            Self::Pattern(val) => val.to_string(),
+            Self::Integer(val) => val.to_string(),
+            Self::Float(val) => val.to_string(),
         }
     }
 }
