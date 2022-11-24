@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Program<'a> {
-    pub functions: Vec<(&'a str, Vec<Statement<'a>>)>,
+    pub functions: Vec<(&'a str, u8, Vec<Statement<'a>>)>,
     pub begin: Vec<Statement<'a>>,
     pub end: Vec<Statement<'a>>,
     pub actions: Vec<(Vec<Expression<'a>>, Vec<Statement<'a>>)>,
@@ -26,7 +26,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) -> Program {
-        let mut functions = Vec::<(&'a str, Vec<Statement<'a>>)>::new();
+        let mut functions = Vec::<(&'a str, u8, Vec<Statement<'a>>)>::new();
         let mut begin = Vec::<Statement<'a>>::new();
         let mut end = Vec::<Statement<'a>>::new();
         let mut actions = Vec::<(Vec<Expression<'a>>, Vec<Statement<'a>>)>::new();
@@ -60,7 +60,7 @@ impl<'a> Parser<'a> {
         self.advance_one(TokenType::RightCurly);
     }
 
-    fn function(&mut self, dest: &mut Vec<(&'a str, Vec<Statement<'a>>)>) {
+    fn function(&mut self, dest: &mut Vec<(&'a str, u8, Vec<Statement<'a>>)>) {
         self.advance_one(TokenType::Function);
         let name_token = self.tokens.peek_next();
         let mut name: &'a str = "";
@@ -86,10 +86,11 @@ impl<'a> Parser<'a> {
             )));
             is_first = false;
         }
+        let arity = statements.len() as u8;
         self.advance(vec![TokenType::RightParen, TokenType::LeftCurly]);
         statements.extend(self.statements());
         self.advance_one(TokenType::RightCurly);
-        dest.push((name, statements));
+        dest.push((name, arity, statements));
     }
 
     fn action(&mut self, dest: &mut Vec<(Vec<Expression<'a>>, Vec<Statement<'a>>)>) {
@@ -351,8 +352,8 @@ impl<'a> Parser<'a> {
                         // parse function call
                         let n = *name;
                         self.skip_by(2);
-                        let mut ret =
-                            Expression::Function(n, Box::new(self.comma_separated_expressions()));
+                        let args = self.comma_separated_expressions();
+                        let mut ret = Expression::Function(n, args.len() as u8, Box::new(args));
                         ret = self.extended_expression(ret, &mut trace);
                         self.advance_one(TokenType::RightParen);
                         ret
@@ -877,6 +878,7 @@ mod tests {
             prog.functions,
             vec![(
                 "hello",
+                2,
                 vec![
                     Statement::Expression(Expression::Binary(
                         BinaryOperator::Equal,
@@ -890,6 +892,7 @@ mod tests {
                     )),
                     Statement::Expression(Expression::Function(
                         "hello",
+                        2,
                         Box::new(vec![
                             Expression::Literal(PrimitiveType::Integer(1)),
                             Expression::Literal(PrimitiveType::Integer(2))
@@ -926,7 +929,7 @@ mod tests {
         ];
         let mut p = Parser::new(&tokens);
         let prog = p.parse();
-        assert_eq!(prog.functions, vec![("f1", vec![]), ("f2", vec![]),])
+        assert_eq!(prog.functions, vec![("f1", 0, vec![]), ("f2", 0, vec![]),])
     }
 
     #[test]
@@ -950,6 +953,7 @@ mod tests {
             prog.begin,
             vec![Statement::Expression(Expression::Function(
                 "emitop",
+                2,
                 Box::new(vec![
                     Expression::Literal(PrimitiveType::String("jump")),
                     Expression::Binary(
