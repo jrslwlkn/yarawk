@@ -750,7 +750,11 @@ mod tests {
                 0,
             ),
             Token::new(TokenType::Comma, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("world")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("world".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::Print, 1, 0),
             Token::new(TokenType::Newline, 0, 3),
@@ -776,7 +780,7 @@ mod tests {
                         Expression::Literal(PrimitiveType::Pattern(
                             Regex::from_str("hello").unwrap()
                         )),
-                        Expression::Literal(PrimitiveType::String("world"))
+                        Expression::Literal(PrimitiveType::String("world".to_string()))
                     ],
                     vec![Statement::Print(vec![]), Statement::Print(vec![])]
                 )
@@ -793,9 +797,17 @@ mod tests {
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Comma, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("world")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("world".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::RightCurly, 0, 0),
         ];
@@ -806,8 +818,8 @@ mod tests {
             vec![(
                 vec![],
                 vec![Statement::Print(vec![
-                    Expression::Literal(PrimitiveType::String("hello")),
-                    Expression::Literal(PrimitiveType::String("world"))
+                    Expression::Literal(PrimitiveType::String("hello".to_string())),
+                    Expression::Literal(PrimitiveType::String("world".to_string()))
                 ]),]
             )],
         )
@@ -829,7 +841,11 @@ mod tests {
             //
             Token::new(TokenType::Print, 0, 0),
             Token::new(TokenType::GreaterThan, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("filename")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("filename".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             //
             Token::new(TokenType::RightCurly, 0, 0),
@@ -845,7 +861,9 @@ mod tests {
                     Statement::Print(vec![Expression::Binary(
                         BinaryOperator::GreaterThan,
                         Box::new(Expression::Empty),
-                        Box::new(Expression::Literal(PrimitiveType::String("filename")))
+                        Box::new(Expression::Literal(PrimitiveType::String(
+                            "filename".to_string()
+                        )))
                     )])
                 ]
             )],
@@ -940,9 +958,17 @@ mod tests {
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::Identifier("emitop"), 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("jump")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("jump".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Comma, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("_")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("_".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Identifier("tag2"), 0, 0),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::RightCurly, 0, 0),
@@ -955,10 +981,10 @@ mod tests {
                 "emitop",
                 2,
                 Box::new(vec![
-                    Expression::Literal(PrimitiveType::String("jump")),
+                    Expression::Literal(PrimitiveType::String("jump".to_string())),
                     Expression::Binary(
                         BinaryOperator::Concat,
-                        Box::new(Expression::Literal(PrimitiveType::String("_"))),
+                        Box::new(Expression::Literal(PrimitiveType::String("_".to_string()))),
                         Box::new(Expression::Variable("tag2"))
                     )
                 ])
@@ -1224,7 +1250,11 @@ mod tests {
             Token::new(TokenType::Dollar, 0, 0),
             Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
             Token::new(TokenType::Equal, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightCurly, 0, 0),
         ];
         let mut p = Parser::new(&tokens);
@@ -1236,7 +1266,9 @@ mod tests {
                 Box::new(Expression::FieldVariable(Box::new(Expression::Literal(
                     PrimitiveType::Integer(1)
                 )))),
-                Box::new(Expression::Literal(PrimitiveType::String("hello"))),
+                Box::new(Expression::Literal(PrimitiveType::String(
+                    "hello".to_string()
+                ))),
             ))]
         )
     }
@@ -1257,7 +1289,11 @@ mod tests {
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::Equal, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightCurly, 0, 0),
         ];
         let mut p = Parser::new(&tokens);
@@ -1273,7 +1309,9 @@ mod tests {
                         "NF"
                     ))))
                 )))),
-                Box::new(Expression::Literal(PrimitiveType::String("hello")))
+                Box::new(Expression::Literal(PrimitiveType::String(
+                    "hello".to_string()
+                )))
             ))]
         )
     }
@@ -1399,26 +1437,50 @@ mod tests {
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::If, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("1")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("1".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("1")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("1".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::Else, 0, 0),
             Token::new(TokenType::If, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("2")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("2".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("2")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("2".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::Else, 0, 0),
             Token::new(TokenType::If, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("3")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("3".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("3")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("3".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::RightCurly, 0, 0),
         ];
@@ -1427,19 +1489,19 @@ mod tests {
         assert_eq!(
             prog.begin,
             vec![Statement::If(
-                Expression::Literal(PrimitiveType::String("1")),
+                Expression::Literal(PrimitiveType::String("1".to_string())),
                 vec![Box::new(Statement::Print(vec![Expression::Literal(
-                    PrimitiveType::String("1")
+                    PrimitiveType::String("1".to_string())
                 ),]))],
                 vec![Box::new(Statement::If(
-                    Expression::Literal(PrimitiveType::String("2")),
+                    Expression::Literal(PrimitiveType::String("2".to_string())),
                     vec![Box::new(Statement::Print(vec![Expression::Literal(
-                        PrimitiveType::String("2")
+                        PrimitiveType::String("2".to_string())
                     )]))],
                     vec![Box::new(Statement::If(
-                        Expression::Literal(PrimitiveType::String("3")),
+                        Expression::Literal(PrimitiveType::String("3".to_string())),
                         vec![Box::new(Statement::Print(vec![Expression::Literal(
-                            PrimitiveType::String("3")
+                            PrimitiveType::String("3".to_string())
                         )]))],
                         vec![]
                     ))]
@@ -1461,30 +1523,58 @@ mod tests {
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::If, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("1")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("1".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("1")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("1".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::Else, 0, 0),
             Token::new(TokenType::If, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("2")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("2".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("2")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("2".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::Else, 0, 0),
             Token::new(TokenType::If, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("3")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("3".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("3")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("3".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::Else, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("4")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("4".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::RightCurly, 0, 0),
         ];
@@ -1493,22 +1583,22 @@ mod tests {
         assert_eq!(
             prog.begin,
             vec![Statement::If(
-                Expression::Literal(PrimitiveType::String("1")),
+                Expression::Literal(PrimitiveType::String("1".to_string())),
                 vec![Box::new(Statement::Print(vec![Expression::Literal(
-                    PrimitiveType::String("1")
+                    PrimitiveType::String("1".to_string())
                 ),]))],
                 vec![Box::new(Statement::If(
-                    Expression::Literal(PrimitiveType::String("2")),
+                    Expression::Literal(PrimitiveType::String("2".to_string())),
                     vec![Box::new(Statement::Print(vec![Expression::Literal(
-                        PrimitiveType::String("2")
+                        PrimitiveType::String("2".to_string())
                     )]))],
                     vec![Box::new(Statement::If(
-                        Expression::Literal(PrimitiveType::String("3")),
+                        Expression::Literal(PrimitiveType::String("3".to_string())),
                         vec![Box::new(Statement::Print(vec![Expression::Literal(
-                            PrimitiveType::String("3")
+                            PrimitiveType::String("3".to_string())
                         )]))],
                         vec![Box::new(Statement::Print(vec![Expression::Literal(
-                            PrimitiveType::String("4")
+                            PrimitiveType::String("4".to_string())
                         )]))],
                     ))]
                 ))],
@@ -1588,7 +1678,11 @@ mod tests {
             //
             Token::new(TokenType::Do, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::While, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
@@ -1598,7 +1692,11 @@ mod tests {
             //
             Token::new(TokenType::Do, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Semicolon, 0, 0),
             Token::new(TokenType::While, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
@@ -1609,7 +1707,11 @@ mod tests {
             Token::new(TokenType::Do, 0, 0),
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightCurly, 0, 0),
             Token::new(TokenType::While, 0, 0),
             Token::new(TokenType::LeftParen, 0, 0),
@@ -1626,19 +1728,19 @@ mod tests {
             vec![
                 Statement::DoWhile(
                     vec![Box::new(Statement::Print(vec![Expression::Literal(
-                        PrimitiveType::String("hello")
+                        PrimitiveType::String("hello".to_string())
                     )]))],
                     Expression::Literal(PrimitiveType::Integer(1))
                 ),
                 Statement::DoWhile(
                     vec![Box::new(Statement::Print(vec![Expression::Literal(
-                        PrimitiveType::String("hello")
+                        PrimitiveType::String("hello".to_string())
                     )]))],
                     Expression::Literal(PrimitiveType::Integer(1))
                 ),
                 Statement::DoWhile(
                     vec![Box::new(Statement::Print(vec![Expression::Literal(
-                        PrimitiveType::String("hello")
+                        PrimitiveType::String("hello".to_string())
                     )]))],
                     Expression::Literal(PrimitiveType::Integer(1))
                 ),
@@ -1668,7 +1770,11 @@ mod tests {
             Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             //
             Token::new(TokenType::While, 0, 0),
@@ -1684,7 +1790,11 @@ mod tests {
             Token::new(TokenType::RightParen, 0, 0),
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             Token::new(TokenType::RightCurly, 0, 0),
             //
@@ -1698,7 +1808,7 @@ mod tests {
                 Statement::While(
                     Expression::Literal(PrimitiveType::Integer(1)),
                     vec![Box::new(Statement::Print(vec![Expression::Literal(
-                        PrimitiveType::String("hello")
+                        PrimitiveType::String("hello".to_string())
                     )]))],
                 ),
                 Statement::While(
@@ -1708,7 +1818,7 @@ mod tests {
                 Statement::While(
                     Expression::Literal(PrimitiveType::Integer(1)),
                     vec![Box::new(Statement::Print(vec![Expression::Literal(
-                        PrimitiveType::String("hello")
+                        PrimitiveType::String("hello".to_string())
                     )]))],
                 ),
             ]
@@ -1872,19 +1982,43 @@ mod tests {
             Token::new(TokenType::Newline, 0, 0),
             //
             // "hello" "world" | "filename"
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("world")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("world".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Pipe, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("filename")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("filename".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             //
             //
             // print "hello" "world" >> "filename"
             Token::new(TokenType::Print, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hello")), 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("world")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hello".to_string())),
+                0,
+                0,
+            ),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("world".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::RightRight, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("filename")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("filename".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             //
             Token::new(TokenType::RightCurly, 0, 0),
@@ -1905,19 +2039,31 @@ mod tests {
                     BinaryOperator::Pipe,
                     Box::new(Expression::Binary(
                         BinaryOperator::Concat,
-                        Box::new(Expression::Literal(PrimitiveType::String("hello"))),
-                        Box::new(Expression::Literal(PrimitiveType::String("world"))),
+                        Box::new(Expression::Literal(PrimitiveType::String(
+                            "hello".to_string()
+                        ))),
+                        Box::new(Expression::Literal(PrimitiveType::String(
+                            "world".to_string()
+                        ))),
                     )),
-                    Box::new(Expression::Literal(PrimitiveType::String("filename")))
+                    Box::new(Expression::Literal(PrimitiveType::String(
+                        "filename".to_string()
+                    )))
                 )),
                 Statement::Print(vec![Expression::Binary(
                     BinaryOperator::Append,
                     Box::new(Expression::Binary(
                         BinaryOperator::Concat,
-                        Box::new(Expression::Literal(PrimitiveType::String("hello"))),
-                        Box::new(Expression::Literal(PrimitiveType::String("world"))),
+                        Box::new(Expression::Literal(PrimitiveType::String(
+                            "hello".to_string()
+                        ))),
+                        Box::new(Expression::Literal(PrimitiveType::String(
+                            "world".to_string()
+                        ))),
                     )),
-                    Box::new(Expression::Literal(PrimitiveType::String("filename")))
+                    Box::new(Expression::Literal(PrimitiveType::String(
+                        "filename".to_string()
+                    )))
                 )]),
             ]
         )
@@ -1942,13 +2088,21 @@ mod tests {
             Token::new(TokenType::Getline, 0, 0),
             Token::new(TokenType::Identifier("a"), 0, 0),
             Token::new(TokenType::LessThan, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hey")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hey".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             //
             // getline < "hey" \n
             Token::new(TokenType::Getline, 0, 0),
             Token::new(TokenType::LessThan, 0, 0),
-            Token::new(TokenType::Literal(PrimitiveType::String("hey")), 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("hey".to_string())),
+                0,
+                0,
+            ),
             Token::new(TokenType::Newline, 0, 0),
             //
             Token::new(TokenType::RightCurly, 0, 0),
@@ -1963,12 +2117,16 @@ mod tests {
                 Statement::Expression(Expression::Getline(Box::new(Expression::Binary(
                     BinaryOperator::LessThan,
                     Box::new(Expression::Variable("a")),
-                    Box::new(Expression::Literal(PrimitiveType::String("hey")))
+                    Box::new(Expression::Literal(PrimitiveType::String(
+                        "hey".to_string()
+                    )))
                 )))),
                 Statement::Expression(Expression::Getline(Box::new(Expression::Binary(
                     BinaryOperator::LessThan,
                     Box::new(Expression::Empty),
-                    Box::new(Expression::Literal(PrimitiveType::String("hey")))
+                    Box::new(Expression::Literal(PrimitiveType::String(
+                        "hey".to_string()
+                    )))
                 )))),
             ]
         )
