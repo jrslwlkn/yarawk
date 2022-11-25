@@ -1,14 +1,14 @@
 use regex::Regex;
 
 #[derive(Clone, Debug)]
-pub enum PrimitiveType<'a> {
-    String(&'a str),
+pub enum PrimitiveType {
+    String(String),
     Pattern(Regex),
     Integer(i64),
     Float(f64),
 }
 
-impl<'a> PartialEq for PrimitiveType<'a> {
+impl<'a> PartialEq for PrimitiveType {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::String(a), Self::String(b)) => a == b,
@@ -20,7 +20,7 @@ impl<'a> PartialEq for PrimitiveType<'a> {
     }
 }
 
-impl<'a> PrimitiveType<'a> {
+impl<'a> PrimitiveType {
     pub fn to_string(&self) -> String {
         match self {
             Self::String(val) => val.to_string(),
@@ -31,12 +31,12 @@ impl<'a> PrimitiveType<'a> {
     }
 }
 
-impl<'a> Eq for PrimitiveType<'a> {}
+impl Eq for PrimitiveType {}
 
 #[derive(Clone, Debug)]
 pub enum TokenType<'a> {
     Identifier(&'a str),
-    Literal(PrimitiveType<'a>),
+    Literal(PrimitiveType),
 
     LeftCurly,
     RightCurly,

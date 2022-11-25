@@ -274,7 +274,7 @@ impl<'a> Lexer<'a> {
                             _ if next_char == quote || next_char == '\0' => {
                                 self.emit(
                                     TokenType::Literal(PrimitiveType::String(
-                                        &self.input[start..=self.pos],
+                                        self.input[start..=self.pos].to_string(),
                                     )),
                                     col,
                                     1,
@@ -367,7 +367,7 @@ mod tests {
             Token::new(TokenType::LeftCurly, 1, 7),
             Token::new(TokenType::Print, 2, 5),
             Token::new(
-                TokenType::Literal(PrimitiveType::String("hello world")),
+                TokenType::Literal(PrimitiveType::String("hello world".to_string())),
                 2,
                 11,
             ),
@@ -450,7 +450,11 @@ db[n, "return"] = st"#
             Token::new(TokenType::LeftBracket, 2, 3),
             Token::new(TokenType::Identifier("n"), 2, 4),
             Token::new(TokenType::Comma, 2, 5),
-            Token::new(TokenType::Literal(PrimitiveType::String("return")), 2, 7),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("return".to_string())),
+                2,
+                7,
+            ),
             Token::new(TokenType::RightBracket, 2, 15),
             Token::new(TokenType::Equal, 2, 17),
             Token::new(TokenType::Identifier("st"), 2, 19),

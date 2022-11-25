@@ -30,7 +30,7 @@ pub enum Statement<'a> {
 pub enum Expression<'a> {
     Empty,
     Getline(Box<Expression<'a>>),
-    Literal(PrimitiveType<'a>),
+    Literal(PrimitiveType),
     Variable(&'a str),
     FieldVariable(Box<Expression<'a>>),
     ArrayVariable(&'a str, Vec<Box<Expression<'a>>>),

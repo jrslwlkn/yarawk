@@ -80,13 +80,16 @@ fn main() {
 
     let mut env = Environment::new(&prog);
     for (name, val) in preset_vars {
-        env.set_variable(name.to_string(), Value::from_str(val));
+        env.set_variable(name.to_string(), Value::from_string(val.to_string()));
     }
     env.set_variable("ARGC".to_string(), Value::from_int(argv.len() as i64 + 1));
     let mut argv_var = HashMap::<String, PrimitiveType>::new();
-    argv_var.insert(format!("{}", 0), PrimitiveType::String("yarawk"));
+    argv_var.insert(
+        format!("{}", 0),
+        PrimitiveType::String("yarawk".to_string()),
+    );
     for (i, val) in argv.iter().enumerate() {
-        argv_var.insert(format!("{}", i + 1), PrimitiveType::String(val));
+        argv_var.insert(format!("{}", i + 1), PrimitiveType::String(val.to_string()));
     }
     env.set_variable("ARGV".to_string(), Value::from_array(argv_var));
 
