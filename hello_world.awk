@@ -5,3 +5,7 @@ BEGIN {
 {
     print 
 }
+
+END {
+    print FNR, NR
+}

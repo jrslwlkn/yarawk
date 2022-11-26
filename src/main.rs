@@ -96,6 +96,7 @@ fn main() {
 
     env.execute_begin();
 
+    let mut nr = 0;
     for filepath in argv {
         let file =
             File::open(filepath).expect(format!("unable to open file: {}", filepath).as_str());
@@ -103,6 +104,7 @@ fn main() {
             "FILENAME".to_string(),
             Value::from_string(filepath.to_string()),
         );
+        let mut fnr = 0;
         let mut reader = BufReader::new(file);
         loop {
             let mut record = vec![];
@@ -112,6 +114,10 @@ fn main() {
                 }
                 Ok(v) if v == 0 => break,
                 Ok(_) => {
+                    nr += 1;
+                    fnr += 1;
+                    env.set_variable("NR".to_string(), Value::from_int(nr));
+                    env.set_variable("FNR".to_string(), Value::from_int(fnr));
                     record.pop(); // remove record separator at the end
                     env.execute_actions(
                         std::str::from_utf8(record.as_slice())
