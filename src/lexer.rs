@@ -96,6 +96,7 @@ impl<'a> Lexer<'a> {
                         self.advance(1, false);
                     }
                 }
+                '?' => self.emit(TokenType::Question, self.col, 1),
                 ':' => self.emit(TokenType::Colon, self.col, 1),
                 '+' if self.peek("++") => self.emit(TokenType::PlusPlus, self.col, 2),
                 '+' => self.emit(TokenType::Plus, self.col, 1),
@@ -565,6 +566,37 @@ while (1) {
             Token::new(TokenType::LeftParen, 1, 11),
             Token::new(TokenType::RightParen, 3, 1),
             Token::new(TokenType::Eof, 3, 2),
+        ];
+        assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn ternary_expr() {
+        let source = r#"
+print 1 > 0 ? "yes" : "no"
+"#
+        .to_string();
+        let mut lexer = Lexer::new(&source);
+        let lhs = lexer.lex();
+        let rhs = vec![
+            Token::new(TokenType::Print, 2, 1),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 2, 7),
+            Token::new(TokenType::GreaterThan, 2, 9),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(0)), 2, 11),
+            Token::new(TokenType::Question, 2, 13),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("yes".to_string())),
+                2,
+                15,
+            ),
+            Token::new(TokenType::Colon, 2, 21),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("no".to_string())),
+                2,
+                23,
+            ),
+            Token::new(TokenType::Newline, 2, 27),
+            Token::new(TokenType::Eof, 3, 1),
         ];
         assert_eq!(lhs, rhs);
     }

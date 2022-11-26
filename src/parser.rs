@@ -831,7 +831,9 @@ mod tests {
         // print
         //
         // print > "filename"
-        //  }
+        //
+        // print 1 > 0 ? "yes" : "no"
+        // }
         let tokens = vec![
             Token::new(TokenType::LeftCurly, 0, 0),
             Token::new(TokenType::Newline, 0, 0),
@@ -843,6 +845,24 @@ mod tests {
             Token::new(TokenType::GreaterThan, 0, 0),
             Token::new(
                 TokenType::Literal(PrimitiveType::String("filename".to_string())),
+                0,
+                0,
+            ),
+            Token::new(TokenType::Newline, 0, 0),
+            //
+            Token::new(TokenType::Print, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(1)), 0, 0),
+            Token::new(TokenType::GreaterThan, 0, 0),
+            Token::new(TokenType::Literal(PrimitiveType::Integer(0)), 0, 0),
+            Token::new(TokenType::Question, 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("yes".to_string())),
+                0,
+                0,
+            ),
+            Token::new(TokenType::Colon, 0, 0),
+            Token::new(
+                TokenType::Literal(PrimitiveType::String("no".to_string())),
                 0,
                 0,
             ),
@@ -864,6 +884,17 @@ mod tests {
                         Box::new(Expression::Literal(PrimitiveType::String(
                             "filename".to_string()
                         )))
+                    )]),
+                    Statement::Print(vec![Expression::Ternary(
+                        Box::new(Expression::Binary(
+                            BinaryOperator::GreaterThan,
+                            Box::new(Expression::Literal(PrimitiveType::Integer(1))),
+                            Box::new(Expression::Literal(PrimitiveType::Integer(0))),
+                        )),
+                        Box::new(Expression::Literal(PrimitiveType::String(
+                            "yes".to_string()
+                        ))),
+                        Box::new(Expression::Literal(PrimitiveType::String("no".to_string()))),
                     )])
                 ]
             )],
