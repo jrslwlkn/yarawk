@@ -99,6 +99,13 @@ impl<'a> Environment<'a> {
         ret
     }
 
+    fn get_variable(&self, name: String) -> Value {
+        self.variables
+            .get(&name)
+            .unwrap_or(&Value::default())
+            .clone()
+    }
+
     fn execute_one(&mut self, statement: &Statement<'a>) -> Value {
         match statement {
             Statement::Empty => Value::Empty,
@@ -156,7 +163,7 @@ impl<'a> Environment<'a> {
                 Value::Empty
             }
             Statement::For(expression, None, None, statements) => match expression {
-                Expression::Binary(In, lhs, rhs) => {
+                Expression::Binary(BinaryOperator::In, lhs, rhs) => {
                     todo!()
                 }
                 _ => {
@@ -170,7 +177,41 @@ impl<'a> Environment<'a> {
                 self.evaluate(e);
                 Value::Empty
             }
-            Statement::Print(_) => todo!(),
+            Statement::Print(expressions) => {
+                let line = self.get_variable("0".to_string()).to_string();
+                let ors = self.get_variable("ORS".to_string()).to_string();
+                let ofs = self.get_variable("OFS".to_string()).to_string();
+                match expressions.len() {
+                    // {
+                    // print
+                    //
+                    // print > "filename"
+                    //  }
+                    0 => {
+                        print!("{}", line);
+                    }
+                    1 => match expressions.get(0).unwrap() {
+                        Expression::Binary(BinaryOperator::GreaterThan, lhs, rhs) => todo!(),
+                        Expression::Binary(BinaryOperator::Append, lhs, rhs) => todo!(),
+                        Expression::Binary(BinaryOperator::Pipe, lhs, rhs) => todo!(),
+                        e => print!("{}{}", self.evaluate(e).to_string(), ors),
+                    },
+                    _ => {
+                        let mut out = "".to_string();
+                        let mut need_sep = false;
+                        for e in expressions {
+                            if need_sep {
+                                out.push_str(&ofs);
+                            }
+                            need_sep = true;
+                            out.push_str(&self.evaluate(e).to_string());
+                        }
+                        out.push_str(&ors);
+                        print!("{}", out);
+                    }
+                };
+                Value::Empty
+            }
             _ => panic!("unexpected statement: {:?}", statement),
         }
     }
@@ -345,27 +386,27 @@ impl<'a> Environment<'a> {
 
     fn default_functions() -> HashMap<String, (u8, Vec<Statement<'a>>)> {
         let mut ret = HashMap::new();
-        ret.insert("atan2".to_string(), (2, vec![todo!()]));
-        ret.insert("cos".to_string(), (1, vec![todo!()]));
-        ret.insert("sin".to_string(), (1, vec![todo!()]));
-        ret.insert("exp".to_string(), (1, vec![todo!()]));
-        ret.insert("log".to_string(), (1, vec![todo!()]));
-        ret.insert("sqrt".to_string(), (1, vec![todo!()]));
-        ret.insert("int".to_string(), (1, vec![todo!()]));
-        ret.insert("rand".to_string(), (1, vec![todo!()]));
-        ret.insert("srand".to_string(), (1, vec![todo!()]));
-        ret.insert("gsub".to_string(), (3, vec![todo!()]));
-        ret.insert("index".to_string(), (2, vec![todo!()]));
-        ret.insert("length".to_string(), (1, vec![todo!()]));
-        ret.insert("match".to_string(), (2, vec![todo!()]));
-        ret.insert("split".to_string(), (3, vec![todo!()]));
-        ret.insert("sprintf".to_string(), (2, vec![todo!()]));
-        ret.insert("sub".to_string(), (3, vec![todo!()]));
-        ret.insert("substr".to_string(), (3, vec![todo!()]));
-        ret.insert("tolower".to_string(), (1, vec![todo!()]));
-        ret.insert("toupper".to_string(), (1, vec![todo!()]));
-        ret.insert("close".to_string(), (1, vec![todo!()]));
-        ret.insert("system".to_string(), (1, vec![todo!()]));
+        ret.insert("atan2".to_string(), (2, vec![])); // TODO
+        ret.insert("cos".to_string(), (1, vec![])); // TODO
+        ret.insert("sin".to_string(), (1, vec![])); // TODO
+        ret.insert("exp".to_string(), (1, vec![])); // TODO
+        ret.insert("log".to_string(), (1, vec![])); // TODO
+        ret.insert("sqrt".to_string(), (1, vec![])); // TODO
+        ret.insert("int".to_string(), (1, vec![])); // TODO
+        ret.insert("rand".to_string(), (1, vec![])); // TODO
+        ret.insert("srand".to_string(), (1, vec![])); // TODO
+        ret.insert("gsub".to_string(), (3, vec![])); // TODO
+        ret.insert("index".to_string(), (2, vec![])); // TODO
+        ret.insert("length".to_string(), (1, vec![])); // TODO
+        ret.insert("match".to_string(), (2, vec![])); // TODO
+        ret.insert("split".to_string(), (3, vec![])); // TODO
+        ret.insert("sprintf".to_string(), (2, vec![])); // TODO
+        ret.insert("sub".to_string(), (3, vec![])); // TODO
+        ret.insert("substr".to_string(), (3, vec![])); // TODO
+        ret.insert("tolower".to_string(), (1, vec![])); // TODO
+        ret.insert("toupper".to_string(), (1, vec![])); // TODO
+        ret.insert("close".to_string(), (1, vec![])); // TODO
+        ret.insert("system".to_string(), (1, vec![])); // TODO
         ret
     }
 }

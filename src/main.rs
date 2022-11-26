@@ -49,7 +49,7 @@ fn main() {
                                     .expect(format!("unable to open file: {}", val).as_str())
                                     .read_to_string(&mut buf)
                                     .expect(format!("unable to read file: {}", val).as_str());
-                                source.to_owned().push_str(buf.as_str());
+                                source.push_str(buf.as_str());
                                 i += 2;
                             }
                             ("-v", val) => {
@@ -72,11 +72,12 @@ fn main() {
     }
 
     let mut lexer = Lexer::new(&source);
+    // println!("source: {:#?}", source);
     let tokens = lexer.lex();
-    // println!("{:#?}", tokens);
+    // println!("tokens: {:#?}", tokens);
     let mut parser = Parser::new(&tokens);
     let prog = parser.parse();
-    println!("{:#?}", prog);
+    // println!("{:#?}", prog);
 
     let mut env = Environment::new(&prog);
     for (name, val) in preset_vars {
