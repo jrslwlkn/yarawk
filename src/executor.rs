@@ -42,6 +42,15 @@ impl<'a> Environment<'a> {
         ret
     }
 
+    pub fn get_rs(&self) -> u8 {
+        *self
+            .get_variable(&"RS".to_string())
+            .to_string()
+            .as_bytes()
+            .get(0)
+            .unwrap_or(&b'\n')
+    }
+
     pub fn set_variable(&mut self, name: String, val: Value) {
         self.variables.insert(name, val);
     }
@@ -58,13 +67,40 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn execute_actions(&mut self, line: &String) {
+    pub fn execute_actions(&mut self, record: &str) {
+        self.set_variable("0".to_string(), Value::from_string(record.to_string()));
         for (expressions, statements) in &self.program.actions {
-            todo!()
+            match expressions.len() {
+                0 => {
+                    self.execute_in_action(statements);
+                }
+                1 => match expressions.get(0).unwrap() {
+                    Expression::Empty => {
+                        self.execute_in_action(statements);
+                    }
+                    _ => todo!(),
+                },
+                _ => todo!(),
+            }
         }
     }
 
     fn execute(&mut self, statements: &Vec<Box<Statement<'a>>>) -> Value {
+        let mut ret = Value::Empty;
+        for s in statements {
+            match self.execute_one(s) {
+                Value::Empty => {}
+                val => {
+                    // here we assume that if a statement returns a value, it must be a return or exit.
+                    ret = val;
+                    break;
+                }
+            }
+        }
+        ret
+    }
+
+    fn execute_in_action(&mut self, statements: &Vec<Statement<'a>>) -> Value {
         let mut ret = Value::Empty;
         for s in statements {
             match self.execute_one(s) {
@@ -99,9 +135,9 @@ impl<'a> Environment<'a> {
         ret
     }
 
-    fn get_variable(&self, name: String) -> Value {
+    fn get_variable(&self, name: &String) -> Value {
         self.variables
-            .get(&name)
+            .get(name)
             .unwrap_or(&Value::default())
             .clone()
     }
@@ -178,9 +214,9 @@ impl<'a> Environment<'a> {
                 Value::Empty
             }
             Statement::Print(expressions) => {
-                let line = self.get_variable("0".to_string()).to_string();
-                let ors = self.get_variable("ORS".to_string()).to_string();
-                let ofs = self.get_variable("OFS".to_string()).to_string();
+                let record = self.get_variable(&"0".to_string()).to_string();
+                let ors = self.get_variable(&"ORS".to_string()).to_string();
+                let ofs = self.get_variable(&"OFS".to_string()).to_string();
                 match expressions.len() {
                     // {
                     // print
@@ -188,7 +224,7 @@ impl<'a> Environment<'a> {
                     // print > "filename"
                     //  }
                     0 => {
-                        print!("{}", line);
+                        print!("{}{}", record, ors);
                     }
                     1 => match expressions.get(0).unwrap() {
                         Expression::Binary(BinaryOperator::GreaterThan, lhs, rhs) => todo!(),

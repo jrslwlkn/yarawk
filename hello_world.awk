@@ -1,1 +1,7 @@
-BEGIN { print "hello" "," "world" }
+BEGIN { 
+    print "hello" "," "world" 
+}
+
+{
+    print 
+}

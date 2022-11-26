@@ -95,16 +95,34 @@ fn main() {
     env.set_variable("ARGV".to_string(), Value::from_array(argv_var));
 
     env.execute_begin();
+
     for filepath in argv {
         let file =
             File::open(filepath).expect(format!("unable to open file: {}", filepath).as_str());
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            env.execute_actions(
-                &line.expect(format!("unable to read file: {}", filepath).as_str()),
-            );
+        env.set_variable(
+            "FILENAME".to_string(),
+            Value::from_string(filepath.to_string()),
+        );
+        let mut reader = BufReader::new(file);
+        loop {
+            let mut record = vec![];
+            match reader.read_until(env.get_rs(), &mut record) {
+                Err(_) => {
+                    panic!("unable to read file: {}", filepath);
+                }
+                Ok(v) if v == 0 => break,
+                Ok(_) => {
+                    record.pop(); // remove record separator at the end
+                    env.execute_actions(
+                        std::str::from_utf8(record.as_slice())
+                            .unwrap_or(format!("unable to read file: {}", filepath).as_str())
+                            .trim(),
+                    );
+                }
+            }
         }
     }
+
     env.execute_end();
 }
 
