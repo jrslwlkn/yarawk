@@ -27,11 +27,10 @@ pub enum Value {
 //        however, only regexes are allowed as filters for actions
 impl<'a> Environment<'a> {
     pub fn new(program: &'a Program<'a>) -> Self {
-        let variables = HashMap::new(); // FIXME: set global variables
         let mut ret = Self {
             program,
-            variables,
-            functions: HashMap::new(), // FIXME: set built-in functions before user-defined ones
+            variables: Self::default_variables(),
+            functions: Self::default_functions(),
         };
         for (name, arity, statements) in &program.functions {
             if ret.functions.contains_key(*name) {
@@ -188,7 +187,7 @@ impl<'a> Environment<'a> {
             Expression::FieldVariable(e) => {
                 let name = self.evaluate(&e).to_string();
                 match self.variables.get(&name) {
-                    None => Value::PrimitiveType(PrimitiveType::String("".to_string())),
+                    None => Value::from_string("".to_string()),
                     Some(val) => val.clone(),
                 }
             }
@@ -319,6 +318,55 @@ impl<'a> Environment<'a> {
             }
             Expression::Getline(_) => panic!("unexpected getline"),
         }
+    }
+
+    fn default_variables() -> HashMap<String, Value> {
+        let mut ret = HashMap::new();
+        ret.insert("ARGC".to_string(), Value::from_string("".to_string()));
+        ret.insert("ARGV".to_string(), Value::from_int(0));
+        ret.insert(
+            "CONVFMT".to_string(),
+            Value::from_string("%.6g".to_string()),
+        );
+        ret.insert("FILENAME".to_string(), Value::from_string("".to_string()));
+        ret.insert("FNR".to_string(), Value::from_int(0));
+        ret.insert("FS".to_string(), Value::from_string(" ".to_string()));
+        ret.insert("NF".to_string(), Value::from_int(0));
+        ret.insert("NR".to_string(), Value::from_int(0));
+        ret.insert("OFMT".to_string(), Value::from_string("%.6g".to_string()));
+        ret.insert("OFS".to_string(), Value::from_string(" ".to_string()));
+        ret.insert("ORS".to_string(), Value::from_string("\n".to_string()));
+        ret.insert("RLENGTH".to_string(), Value::from_int(0));
+        ret.insert("RS".to_string(), Value::from_string("\n".to_string()));
+        ret.insert("RSTART".to_string(), Value::from_int(0));
+        ret.insert("SUBSEP".to_string(), Value::from_string(",".to_string()));
+        ret
+    }
+
+    fn default_functions() -> HashMap<String, (u8, Vec<Statement<'a>>)> {
+        let mut ret = HashMap::new();
+        ret.insert("atan2".to_string(), (2, vec![todo!()]));
+        ret.insert("cos".to_string(), (1, vec![todo!()]));
+        ret.insert("sin".to_string(), (1, vec![todo!()]));
+        ret.insert("exp".to_string(), (1, vec![todo!()]));
+        ret.insert("log".to_string(), (1, vec![todo!()]));
+        ret.insert("sqrt".to_string(), (1, vec![todo!()]));
+        ret.insert("int".to_string(), (1, vec![todo!()]));
+        ret.insert("rand".to_string(), (1, vec![todo!()]));
+        ret.insert("srand".to_string(), (1, vec![todo!()]));
+        ret.insert("gsub".to_string(), (3, vec![todo!()]));
+        ret.insert("index".to_string(), (2, vec![todo!()]));
+        ret.insert("length".to_string(), (1, vec![todo!()]));
+        ret.insert("match".to_string(), (2, vec![todo!()]));
+        ret.insert("split".to_string(), (3, vec![todo!()]));
+        ret.insert("sprintf".to_string(), (2, vec![todo!()]));
+        ret.insert("sub".to_string(), (3, vec![todo!()]));
+        ret.insert("substr".to_string(), (3, vec![todo!()]));
+        ret.insert("tolower".to_string(), (1, vec![todo!()]));
+        ret.insert("toupper".to_string(), (1, vec![todo!()]));
+        ret.insert("close".to_string(), (1, vec![todo!()]));
+        ret.insert("system".to_string(), (1, vec![todo!()]));
+        ret
     }
 }
 
