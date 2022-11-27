@@ -154,3 +154,29 @@ fn expression_pattern() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn arithmetic_expression() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            x = y = 1 / 5 * 10 - 3^5
+        }
+        END {
+            print x, y
+        }
+    "#,
+    )?;
+
+    let in1 = assert_fs::NamedTempFile::new("in1.awk")?;
+    in1.write_str("a\nb")?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("-241 -241"));
+
+    Ok(())
+}

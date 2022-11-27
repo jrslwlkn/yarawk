@@ -24,9 +24,6 @@ pub enum Value {
     ArrayType(HashMap<String, PrimitiveType>),
 }
 
-// FIXME: strings are regexes within ~ and !~ binary expressions
-//        strings are only requiring escaping the backslash
-//        however, only regexes are allowed as filters for actions
 impl<'a> Environment<'a> {
     pub fn new(program: &'a Program<'a>) -> Self {
         let mut ret = Self {
@@ -335,7 +332,7 @@ impl<'a> Environment<'a> {
             Expression::Empty => Value::Empty,
             Expression::Literal(val) => Value::from_primitive(val),
             Expression::Variable(name) => match self.variables.get(*name) {
-                None => Value::default(),
+                None => Value::Empty,
                 Some(val) => val.clone(),
             },
             Expression::ArrayVariable(name, expressions) => todo!(),
@@ -439,24 +436,112 @@ impl<'a> Environment<'a> {
                         _ => 1,
                     })
                 }
-                BinaryOperator::Match => todo!(),
-                BinaryOperator::NotMatch => todo!(),
+                BinaryOperator::Match => {
+                    let lhs = self.evaluate(lhs);
+                    let rhs = self.evaluate(rhs);
+                    Value::from_int(
+                        if self.match_first(&lhs.to_string(), &rhs.to_regex()).0 > 0 {
+                            1
+                        } else {
+                            0
+                        },
+                    )
+                }
+                BinaryOperator::NotMatch => {
+                    let lhs = self.evaluate(lhs);
+                    let rhs = self.evaluate(rhs);
+                    Value::from_int(
+                        if self.match_first(&lhs.to_string(), &rhs.to_regex()).0 == 0 {
+                            1
+                        } else {
+                            0
+                        },
+                    )
+                }
                 BinaryOperator::Plus => {
                     let lhs = self.evaluate(lhs);
                     let rhs = self.evaluate(rhs);
-                    todo!();
-                    // let is_float = *lhs == ExpressionPrimitiveType::Float(0.0);
-                    // let val = format!("{} {}", lhs, rhs);
-                    // Value::from_string(val)
+                    match (&lhs, &rhs) {
+                        (Value::PrimitiveType(PrimitiveType::Float(_)), _)
+                        | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
+                            Value::from_float(lhs.to_float() + rhs.to_float())
+                        }
+                        _ => Value::from_int(lhs.to_int() + rhs.to_int()),
+                    }
                 }
-                BinaryOperator::Minus => todo!(),
-                BinaryOperator::Multiply => todo!(),
-                BinaryOperator::Divide => todo!(),
-                BinaryOperator::Modulo => todo!(),
-                BinaryOperator::Exponent => todo!(),
-                BinaryOperator::Equal => todo!(),
-                BinaryOperator::Or => todo!(),
-                BinaryOperator::And => todo!(),
+                BinaryOperator::Minus => {
+                    let lhs = self.evaluate(lhs);
+                    let rhs = self.evaluate(rhs);
+                    match (&lhs, &rhs) {
+                        (Value::PrimitiveType(PrimitiveType::Float(_)), _)
+                        | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
+                            Value::from_float(lhs.to_float() - rhs.to_float())
+                        }
+                        _ => Value::from_int(lhs.to_int() - rhs.to_int()),
+                    }
+                }
+                BinaryOperator::Multiply => {
+                    let lhs = self.evaluate(lhs);
+                    let rhs = self.evaluate(rhs);
+                    match (&lhs, &rhs) {
+                        (Value::PrimitiveType(PrimitiveType::Float(_)), _)
+                        | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
+                            Value::from_float(lhs.to_float() * rhs.to_float())
+                        }
+                        _ => Value::from_int(lhs.to_int() * rhs.to_int()),
+                    }
+                }
+                BinaryOperator::Divide => {
+                    let lhs = self.evaluate(lhs);
+                    let rhs = self.evaluate(rhs);
+                    Value::from_float(lhs.to_float() / rhs.to_float())
+                }
+                BinaryOperator::Modulo => {
+                    let lhs = self.evaluate(lhs);
+                    let rhs = self.evaluate(rhs);
+                    Value::from_int(lhs.to_int() % rhs.to_int())
+                }
+                BinaryOperator::Exponent => {
+                    let lhs = self.evaluate(lhs);
+                    let rhs = self.evaluate(rhs);
+                    match (&lhs, &rhs) {
+                        (
+                            Value::PrimitiveType(PrimitiveType::Integer(_)),
+                            Value::PrimitiveType(PrimitiveType::Integer(_)),
+                        ) => Value::from_int(lhs.to_int().pow(rhs.to_int() as u32)),
+                        _ => Value::from_float(lhs.to_float().powf(rhs.to_float())),
+                    }
+                }
+                BinaryOperator::Equal => {
+                    let val = self.evaluate(rhs);
+                    match **lhs {
+                        Expression::Variable(name) => {
+                            self.set_variable(name.to_string(), val.clone());
+                        }
+                        Expression::ArrayVariable(_, _) => {
+                            todo!()
+                        }
+                        Expression::FieldVariable(_) => {
+                            todo!()
+                        }
+                        _ => panic!("expected variable assignment, received: {:?}", **lhs),
+                    }
+                    val
+                }
+                BinaryOperator::Or => Value::from_int(
+                    if self.evaluate(lhs).is_truthy() || self.evaluate(rhs).is_truthy() {
+                        1
+                    } else {
+                        0
+                    },
+                ),
+                BinaryOperator::And => Value::from_int(
+                    if self.evaluate(lhs).is_truthy() && self.evaluate(rhs).is_truthy() {
+                        1
+                    } else {
+                        0
+                    },
+                ),
                 BinaryOperator::In => todo!(),
                 BinaryOperator::Pipe => todo!(),
                 BinaryOperator::Append => todo!(),
@@ -618,6 +703,14 @@ impl<'a> Value {
                 ret.push_str("]");
                 ret
             }
+        }
+    }
+
+    pub fn to_regex(&self) -> Regex {
+        match self {
+            Value::Empty => Regex::new("").unwrap(),
+            Self::PrimitiveType(val) => val.to_regex(),
+            val => panic!("{:?} cannot be used as a pattern", val),
         }
     }
 

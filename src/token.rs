@@ -166,6 +166,15 @@ impl<'a> PrimitiveType {
             Self::Float(val) => val.to_string(),
         }
     }
+
+    pub fn to_regex(&self) -> Regex {
+        match self {
+            Self::String(val) => Regex::new(val.to_string().as_str()).unwrap(),
+            Self::Pattern(val) => val.clone(),
+            Self::Integer(val) => Regex::new(val.to_string().as_str()).unwrap(),
+            Self::Float(val) => Regex::new(val.to_string().as_str()).unwrap(),
+        }
+    }
 }
 
 impl Eq for PrimitiveType {}
