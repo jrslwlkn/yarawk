@@ -162,7 +162,7 @@ impl<'a> Lexer<'a> {
                     }
                     if pair_idx > 0 {
                         // if found another unescaped Slash, try following to determine if this is Pattern:
-                        // before: LeftParen, Equal, EqualEqual, NotEqual, Tilde, NotTilde, Nothing
+                        // before: LeftParen, Equal, EqualEqual, NotEqual, Tilde, NotTilde, Comma, Nothing
                         match self.tokens.last() {
                             None => {
                                 // remove line splits within the regex
@@ -180,6 +180,7 @@ impl<'a> Lexer<'a> {
                             }
                             Some(t) => match t.value {
                                 TokenType::LeftParen
+                                | TokenType::Comma
                                 | TokenType::Equal
                                 | TokenType::EqualEqual
                                 | TokenType::NotEqual
