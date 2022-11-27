@@ -551,6 +551,7 @@ impl<'a> Parser<'a> {
                 | TokenType::In
                 | TokenType::Pipe
                 | TokenType::RightRight
+                | TokenType::Dollar
                 | TokenType::Tilde
                 | TokenType::NotTilde => {
                     let op = BinaryOperator::convert(&t.value);

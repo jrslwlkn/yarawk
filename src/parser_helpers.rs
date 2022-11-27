@@ -102,7 +102,10 @@ impl BinaryOperator {
             TokenType::Plus => Self::Plus,
             TokenType::Minus => Self::Minus,
             TokenType::In => Self::In,
-            TokenType::LeftParen | TokenType::Literal(_) | TokenType::Identifier(_) => Self::Concat,
+            TokenType::LeftParen
+            | TokenType::Literal(_)
+            | TokenType::Identifier(_)
+            | TokenType::Dollar => Self::Concat,
             TokenType::EqualEqual => Self::EqualEqual,
             TokenType::NotEqual => Self::NotEqual,
             TokenType::LessThan => Self::LessThan,
