@@ -13,6 +13,7 @@ pub struct Environment<'a> {
     program: &'a Program<'a>,
     variables: HashMap<String, Value>,
     functions: HashMap<String, (u8, Vec<Statement<'a>>)>,
+    max_field: usize,
 }
 
 #[derive(Clone, Eq, Debug)]
@@ -31,6 +32,7 @@ impl<'a> Environment<'a> {
             program,
             variables: Self::default_variables(),
             functions: Self::default_functions(),
+            max_field: 0,
         };
         for (name, arity, statements) in &program.functions {
             if ret.functions.contains_key(*name) {
@@ -68,19 +70,43 @@ impl<'a> Environment<'a> {
     }
 
     pub fn execute_actions(&mut self, record: &str) {
+        // parse and set field variables
         self.set_variable("0".to_string(), Value::from_string(record.to_string()));
+        let fs = self.get_variable(&"FS".to_string()).to_string();
+        let mut i = 1;
+        for val in record.split(&fs) {
+            let val = val.trim();
+            if val.len() > 0 {
+                self.set_variable(i.to_string(), Value::from_string(val.to_string()));
+                i += 1;
+            }
+        }
+        for n in i..=self.max_field {
+            // remove fields from the previous record
+            self.variables.remove(&n.to_string());
+        }
+        self.max_field = i;
+        // execute actions
         for (expressions, statements) in &self.program.actions {
             match expressions.len() {
                 0 => {
                     self.execute_in_action(statements);
                 }
-                1 => match expressions.get(0).unwrap() {
-                    Expression::Empty => {
+                1 => match self.evaluate(expressions.get(0).unwrap()) {
+                    Value::Empty => {
                         self.execute_in_action(statements);
                     }
-                    _ => todo!(),
+                    Value::PrimitiveType(PrimitiveType::Pattern(p)) => todo!(),
+                    val if val.is_truthy() => {
+                        self.execute_in_action(statements);
+                    }
+                    _ => {}
                 },
-                _ => todo!(),
+                2 => todo!(), // TODO: range pattern
+                _ => panic!(
+                    "expected: expression or range expression(2), received {} expressions",
+                    expressions.len()
+                ),
             }
         }
     }
@@ -111,6 +137,12 @@ impl<'a> Environment<'a> {
                     break;
                 }
             }
+        }
+        if statements.len() == 0
+            || statements.len() == 1 && *statements.get(0).unwrap() == Statement::Empty
+        {
+            // default statement in actions is print current record
+            self.execute_one(&Statement::Print(vec![]));
         }
         ret
     }
