@@ -113,7 +113,7 @@ impl<'a> Lexer<'a> {
                 '%' if self.peek("%=") => self.emit(TokenType::PercentEqual, self.col, 2),
                 '%' => self.emit(TokenType::Percent, self.col, 1),
                 '^' if self.peek("^=") => self.emit(TokenType::CarrotEqual, self.col, 2),
-                '^' => self.emit(TokenType::Percent, self.col, 1),
+                '^' => self.emit(TokenType::Carrot, self.col, 1),
                 '$' => self.emit(TokenType::Dollar, self.col, 1),
                 '/' if self.peek("/=") && !self.peek("/==") => {
                     self.emit(TokenType::SlashEqual, self.col, 2)
