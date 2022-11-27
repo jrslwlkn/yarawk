@@ -96,7 +96,10 @@ impl<'a> Parser<'a> {
     fn action(&mut self, dest: &mut Vec<(Vec<Expression<'a>>, Vec<Statement<'a>>)>) {
         self.skip_newlines_and_semicolons();
         let mut expressions = vec![];
-        while !self.check_one(TokenType::LeftCurly) {
+        while !self.check_one(TokenType::LeftCurly)
+            && !self.check_one(TokenType::Newline)
+            && !self.check_one(TokenType::Eof)
+        {
             expressions.push(self.expression(ExpressionTrace::new()));
             if self.check_one(TokenType::Comma) {
                 self.advance_one(TokenType::Comma);
@@ -117,7 +120,10 @@ impl<'a> Parser<'a> {
         // parse statements either until the end of the tokens or until we encounter a right curly
         self.skip_newlines_and_semicolons();
         let mut ret = Vec::<Statement<'a>>::new();
-        while self.tokens.current().is_some() && !self.check_one(TokenType::RightCurly) {
+        while self.tokens.current().is_some()
+            && !self.check_one(TokenType::RightCurly)
+            && !self.check_one(TokenType::Eof)
+        {
             let s = self.statement();
             if ret.is_empty() || s != Statement::Expression(Expression::Empty) {
                 // no need to keep trailing empty expressions
@@ -618,7 +624,15 @@ impl<'a> Parser<'a> {
         for token in types {
             let val = &self.tokens.peek_next();
             match (val, &token) {
-                (None, _) => panic!(
+                (None, _)
+                | (
+                    Some(Token {
+                        value: TokenType::Eof,
+                        row: _,
+                        col: _,
+                    }),
+                    _,
+                ) => panic!(
                     "expected: {:?} @ {}:{}",
                     &token,
                     self.tokens
