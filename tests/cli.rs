@@ -30,9 +30,9 @@ fn actions() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let in1 = assert_fs::NamedTempFile::new("in1.awk")?;
-    in1.write_str("hello\nworld\n");
+    in1.write_str("hello\nworld\n")?;
     let in2 = assert_fs::NamedTempFile::new("in2.awk")?;
-    in2.write_str("hello\nworld\n");
+    in2.write_str("hello\nworld\n")?;
 
     let mut cmd = Command::cargo_bin("yarawk")?;
     cmd.arg("-f")
@@ -56,13 +56,101 @@ fn fields() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let in1 = assert_fs::NamedTempFile::new("in1.awk")?;
-    in1.write_str("hello   world   \n");
+    in1.write_str("hello   world   \n")?;
 
     let mut cmd = Command::cargo_bin("yarawk")?;
     cmd.arg("-f").arg(source.path()).arg(in1.path());
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("hello - world\n"));
+
+    Ok(())
+}
+
+#[test]
+fn pattern() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        /a/ {
+            print "match", NR
+        }
+    "#,
+    )?;
+
+    let in1 = assert_fs::NamedTempFile::new("in1.awk")?;
+    in1.write_str(
+        r#"a
+    b
+    a c b
+    hello
+
+    a b
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("match 1\nmatch 3\nmatch 6\n"));
+
+    Ok(())
+}
+
+#[test]
+fn range_pattern() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        /a/, /b/ {
+            print "match", NR
+        }
+    "#,
+    )?;
+
+    let in1 = assert_fs::NamedTempFile::new("in1.awk")?;
+    in1.write_str(
+        r#"a
+    b
+    a c b
+    hello
+
+    a b
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+    cmd.assert().success().stdout(predicate::str::contains(
+        "match 1\nmatch 2\nmatch 3\nmatch 6\n",
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn expression_pattern() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        "" {
+            print "not match", NR
+        }
+        42 {
+            print "match", NR
+        }
+    "#,
+    )?;
+
+    let in1 = assert_fs::NamedTempFile::new("in1.awk")?;
+    in1.write_str("a\nb")?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("match 1\nmatch 2\n"));
 
     Ok(())
 }

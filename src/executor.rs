@@ -14,6 +14,7 @@ pub struct Environment<'a> {
     variables: HashMap<String, Value>,
     functions: HashMap<String, (u8, Vec<Statement<'a>>)>,
     max_field: usize,
+    ranges_flags: Vec<bool>, // if true for a given idx, then we're currently in this running range
 }
 
 #[derive(Clone, Eq, Debug)]
@@ -33,6 +34,7 @@ impl<'a> Environment<'a> {
             variables: Self::default_variables(),
             functions: Self::default_functions(),
             max_field: 0,
+            ranges_flags: vec![],
         };
         for (name, arity, statements) in &program.functions {
             if ret.functions.contains_key(*name) {
@@ -87,6 +89,7 @@ impl<'a> Environment<'a> {
         }
         self.max_field = i;
         // execute actions
+        let mut range_idx = 0;
         for (expressions, statements) in &self.program.actions {
             match expressions.len() {
                 0 => {
@@ -96,13 +99,63 @@ impl<'a> Environment<'a> {
                     Value::Empty => {
                         self.execute_in_action(statements);
                     }
-                    Value::PrimitiveType(PrimitiveType::Pattern(p)) => todo!(),
-                    val if val.is_truthy() => {
-                        self.execute_in_action(statements);
+                    Value::PrimitiveType(PrimitiveType::Pattern(re)) => {
+                        if re.is_match(record) {
+                            self.execute_in_action(statements);
+                        }
                     }
-                    _ => {}
+                    val => {
+                        if val.is_truthy() {
+                            self.execute_in_action(statements);
+                        }
+                    }
                 },
-                2 => todo!(), // TODO: range pattern
+                2 => {
+                    if self.ranges_flags.is_empty() || self.ranges_flags.len() - 1 < range_idx {
+                        // init
+                        self.ranges_flags.push(false);
+                    }
+                    if self.ranges_flags[range_idx] {
+                        // we're in running range, test if should stop
+                        match self.evaluate(expressions.get(1).unwrap()) {
+                            Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
+                                if self.match_first(&record.to_string(), &p).0 > 0 {
+                                    self.ranges_flags[range_idx] = false;
+                                    self.execute_in_action(statements);
+                                }
+                            }
+                            val => {
+                                if val.is_truthy() {
+                                    self.execute_in_action(statements);
+                                }
+                            }
+                        }
+                    } else {
+                        // we're not in running range, test if should start
+                        let mut cur_record = record;
+                        match self.evaluate(expressions.get(0).unwrap()) {
+                            Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
+                                let (match_start, match_len) =
+                                    self.match_first(&cur_record.to_string(), &p);
+                                if match_start > 0 {
+                                    cur_record = &cur_record[(match_start + match_len - 1)..];
+                                    self.ranges_flags[range_idx] = true;
+                                    self.execute_in_action(statements);
+                                    if self.match_first(&cur_record.to_string(), &p).0 > 0 {
+                                        // range ends within record
+                                        self.ranges_flags[range_idx] = false;
+                                    }
+                                }
+                            }
+                            val => {
+                                if val.is_truthy() {
+                                    self.execute_in_action(statements);
+                                }
+                            }
+                        }
+                    }
+                    range_idx += 1;
+                }
                 _ => panic!(
                     "expected: expression or range expression(2), received {} expressions",
                     expressions.len()
@@ -165,13 +218,6 @@ impl<'a> Environment<'a> {
             }
         }
         ret
-    }
-
-    fn get_variable(&self, name: &String) -> Value {
-        self.variables
-            .get(name)
-            .unwrap_or(&Value::default())
-            .clone()
     }
 
     fn execute_one(&mut self, statement: &Statement<'a>) -> Value {
@@ -427,6 +473,25 @@ impl<'a> Environment<'a> {
             }
             Expression::Getline(_) => panic!("unexpected getline"),
         }
+    }
+
+    fn match_first(&mut self, lhs: &String, rhs: &Regex) -> (usize, usize) {
+        // ([idx where match started, 1-based], [match length])
+        let mut captures = rhs.captures_iter(lhs);
+        match captures.nth(0) {
+            None => (0, 0),
+            Some(c) => (
+                c.get(0).unwrap().start() + 1,
+                c.get(0).unwrap().range().len(),
+            ),
+        }
+    }
+
+    fn get_variable(&self, name: &String) -> Value {
+        self.variables
+            .get(name)
+            .unwrap_or(&Value::default())
+            .clone()
     }
 
     fn default_variables() -> HashMap<String, Value> {
