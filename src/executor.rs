@@ -15,6 +15,7 @@ pub struct Environment<'a> {
     functions: HashMap<String, (u8, Vec<Statement<'a>>)>,
     max_field: usize,
     ranges_flags: Vec<bool>, // if true for a given idx, then we're currently in this running range
+    local_scope: HashMap<String, Value>,
 }
 
 #[derive(Clone, Eq, Debug)]
@@ -32,6 +33,7 @@ impl<'a> Environment<'a> {
             functions: Self::default_functions(),
             max_field: 0,
             ranges_flags: vec![],
+            local_scope: HashMap::new(),
         };
         for (name, arity, statements) in &program.functions {
             if ret.functions.contains_key(*name) {
@@ -53,7 +55,14 @@ impl<'a> Environment<'a> {
     }
 
     pub fn set_variable(&mut self, name: String, val: Value) {
-        self.variables.insert(name, val);
+        match self.local_scope.get(&name.to_string()) {
+            None => {
+                self.variables.insert(name, val);
+            }
+            Some(_) => {
+                self.local_scope.insert(name, val);
+            }
+        }
     }
 
     pub fn execute_begin(&mut self) {
@@ -331,17 +340,11 @@ impl<'a> Environment<'a> {
         match expression {
             Expression::Empty => Value::Empty,
             Expression::Literal(val) => Value::from_primitive(val),
-            Expression::Variable(name) => match self.variables.get(*name) {
-                None => Value::Empty,
-                Some(val) => val.clone(),
-            },
+            Expression::Variable(name) => self.get_variable(&name.to_string()),
             Expression::ArrayVariable(name, expressions) => todo!(),
             Expression::FieldVariable(e) => {
                 let name = self.evaluate(&e).to_string();
-                match self.variables.get(&name) {
-                    None => Value::from_string("".to_string()),
-                    Some(val) => val.clone(),
-                }
+                self.get_variable(&name)
             }
             Expression::Grouping(expressions) => self.evaluate(expressions.get(0).unwrap()), //FIXME: should we handle (x,y,z) thingys here?
             Expression::Unary(op, val) => match op {
@@ -554,7 +557,42 @@ impl<'a> Environment<'a> {
                 }
             }
             Expression::Function(name, arity, args) => {
-                todo!()
+                let mut function = self
+                    .functions
+                    .get(&name.to_string())
+                    .expect(format!("function {} does not exist", name).as_str())
+                    .clone();
+                if *arity > function.0 {
+                    panic!("function {} does not take {} arguments", name, *arity);
+                }
+
+                let prev_scope = self.local_scope.clone();
+                self.local_scope = HashMap::new();
+
+                // first <arity> statements are arg declarations
+                for _ in 0..function.0 {
+                    match function.1.get(0).unwrap() {
+                        Statement::Expression(Expression::Binary(BinaryOperator::Equal, e, _)) => {
+                            match **e {
+                                Expression::Variable(n) => {
+                                    let val = match args.get(0) {
+                                        None => Value::Empty,
+                                        Some(val) => self.evaluate(val),
+                                    };
+                                    self.local_scope.insert(n.to_string(), val);
+                                    function.1.remove(0);
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        s => {
+                            panic!("unexpected {:?}", s)
+                        }
+                    };
+                }
+                let ret = self.execute_in_action(&function.1.to_vec());
+                self.local_scope = prev_scope;
+                ret
             }
             Expression::Getline(_) => panic!("unexpected getline"),
         }
@@ -573,10 +611,10 @@ impl<'a> Environment<'a> {
     }
 
     fn get_variable(&self, name: &String) -> Value {
-        self.variables
-            .get(name)
-            .unwrap_or(&Value::default())
-            .clone()
+        match self.local_scope.get(name) {
+            None => self.variables.get(name).unwrap_or(&&Value::Empty).clone(),
+            Some(val) => val.clone(),
+        }
     }
 
     fn default_variables() -> HashMap<String, Value> {
