@@ -392,7 +392,7 @@ impl<'a> Environment<'a> {
                 BinaryOperator::Concat => {
                     let lhs = self.evaluate(lhs).to_string();
                     let rhs = self.evaluate(rhs).to_string();
-                    let val = format!("{} {}", lhs, rhs);
+                    let val = format!("{}{}", lhs, rhs);
                     Value::from_string(val)
                 }
                 BinaryOperator::EqualEqual => {

@@ -6,7 +6,7 @@ use std::process::Command;
 #[test]
 fn hello_world() -> Result<(), Box<dyn std::error::Error>> {
     let source = assert_fs::NamedTempFile::new("source.awk")?;
-    source.write_str("BEGIN { print 'hello', ',' 'world' }")?;
+    source.write_str("BEGIN { print 'hello', ',', 'world' }")?;
 
     let mut cmd = Command::cargo_bin("yarawk")?;
     cmd.arg("-f").arg(source.path());
@@ -62,7 +62,7 @@ fn fields() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("-f").arg(source.path()).arg(in1.path());
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("hello - world\n"));
+        .stdout(predicate::str::contains("hello-world\n"));
 
     Ok(())
 }
