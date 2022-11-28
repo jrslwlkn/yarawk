@@ -368,13 +368,14 @@ impl<'a> Parser<'a> {
                         if self.check(vec![TokenType::Identifier(""), TokenType::LeftBracket]) =>
                     {
                         // parse (associative/multidimentional/regular) array access
-                        let n = *name;
+                        let name = *name;
                         self.skip_by(2);
-                        let mut ret =
-                            Expression::ArrayVariable(n, self.boxed_comma_separated_expressions());
-                        ret = self.extended_expression(ret, &mut trace);
+                        let ret = Expression::ArrayVariable(
+                            name,
+                            self.boxed_comma_separated_expressions(),
+                        );
                         self.advance_one(TokenType::RightBracket);
-                        ret
+                        self.extended_expression(ret, &mut trace)
                     }
                     TokenType::Identifier(name) => {
                         // parse variable
