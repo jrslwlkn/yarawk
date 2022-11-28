@@ -341,7 +341,29 @@ impl<'a> Environment<'a> {
             Expression::Empty => Value::Empty,
             Expression::Literal(val) => Value::from_primitive(val),
             Expression::Variable(name) => self.get_variable(&name.to_string()),
-            Expression::ArrayVariable(name, expressions) => todo!(),
+            Expression::ArrayVariable(name, expressions) => {
+                let val = match self.get_variable(&name.to_string()) {
+                    Value::ArrayType(val) => val,
+                    _ => panic!("{} is not array variable", name),
+                };
+                let prev_subsep = self.get_variable(&"SUBSEP".to_string());
+                self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
+                let key = expressions
+                    .into_iter()
+                    .map(|e| self.evaluate(e).to_string())
+                    .reduce(|mut acc, x| {
+                        acc.push_str(x.as_str());
+                        acc.push_str(",");
+                        acc
+                    })
+                    .unwrap();
+                let ret = match val.get(&key) {
+                    None => Value::Empty,
+                    Some(v) => Value::from_primitive(v),
+                };
+                self.set_variable("SUBSEP".to_string(), prev_subsep);
+                ret
+            }
             Expression::FieldVariable(e) => {
                 let name = self.evaluate(&e).to_string();
                 self.get_variable(&name)
@@ -517,12 +539,36 @@ impl<'a> Environment<'a> {
                 }
                 BinaryOperator::Equal => {
                     let val = self.evaluate(rhs);
-                    match **lhs {
+                    match &**lhs {
                         Expression::Variable(name) => {
                             self.set_variable(name.to_string(), val.clone());
                         }
-                        Expression::ArrayVariable(_, _) => {
-                            todo!()
+                        Expression::ArrayVariable(name, expressions) => {
+                            let mut var = match self.get_variable(&name.to_string()) {
+                                Value::ArrayType(val) => val,
+                                _ => {
+                                    let val = Value::ArrayType(HashMap::new());
+                                    self.set_variable(name.to_string(), val);
+                                    HashMap::new()
+                                }
+                            };
+                            let prev_subsep = self.get_variable(&"SUBSEP".to_string());
+                            self.set_variable(
+                                "SUBSEP".to_string(),
+                                Value::from_string(",".to_string()),
+                            );
+                            let key = expressions
+                                .into_iter()
+                                .map(|e| self.evaluate(&e).to_string())
+                                .reduce(|mut acc, x| {
+                                    acc.push_str(x.as_str());
+                                    acc.push_str(",");
+                                    acc
+                                })
+                                .unwrap();
+                            var.insert(key, val.to_primitive());
+                            self.set_variable(name.to_string(), Value::ArrayType(var));
+                            self.set_variable("SUBSEP".to_string(), prev_subsep);
                         }
                         Expression::FieldVariable(_) => {
                             todo!()
@@ -798,5 +844,12 @@ impl<'a> Value {
 
     pub fn from_primitive(val: &PrimitiveType) -> Self {
         Self::PrimitiveType(val.clone())
+    }
+
+    pub fn to_primitive(&self) -> PrimitiveType {
+        match &self {
+            Self::PrimitiveType(val) => val.clone(),
+            _ => PrimitiveType::String("".to_string()),
+        }
     }
 }

@@ -209,3 +209,25 @@ fn function_scope() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn array_variable() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            a[0] = "hello"
+            a[1] = "world"
+            print "'" a[0] "'", "'" a[1] "'"
+        }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("'hello' 'world'\n"));
+
+    Ok(())
+}
