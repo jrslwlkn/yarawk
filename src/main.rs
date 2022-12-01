@@ -30,7 +30,7 @@ fn main() {
                 match (args.get(i), args.get(i + 1)) {
                     (None, _) => break,
                     (Some(val), None) => {
-                        if source == "" {
+                        if source.is_empty() {
                             source = val.clone();
                         } else {
                             argv.push(val);
@@ -133,8 +133,7 @@ fn main() {
 }
 
 fn get_kv_pair(input: &str) -> Option<(&str, &str)> {
-    match input.find('=') {
-        None => None,
-        Some(i) => Some((&input[0..i], &input[i + 1..input.len()])),
-    }
+    input
+        .find('=')
+        .map(|i| (&input[0..i], &input[i + 1..input.len()]))
 }

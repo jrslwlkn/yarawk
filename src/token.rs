@@ -157,7 +157,7 @@ impl PartialEq for PrimitiveType {
     }
 }
 
-impl<'a> PrimitiveType {
+impl PrimitiveType {
     pub fn to_string(&self) -> String {
         match self {
             Self::String(val) => val.to_string(),

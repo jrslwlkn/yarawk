@@ -11,18 +11,14 @@ pub enum Statement<'a> {
     Exit(Expression<'a>),
     Return(Expression<'a>),
     Delete(Expression<'a>),
-    If(
-        Expression<'a>,
-        Vec<Box<Statement<'a>>>,
-        Vec<Box<Statement<'a>>>,
-    ),
-    DoWhile(Vec<Box<Statement<'a>>>, Expression<'a>),
-    While(Expression<'a>, Vec<Box<Statement<'a>>>),
+    If(Expression<'a>, Vec<Statement<'a>>, Vec<Statement<'a>>),
+    DoWhile(Vec<Statement<'a>>, Expression<'a>),
+    While(Expression<'a>, Vec<Statement<'a>>),
     For(
         Expression<'a>,
         Option<Expression<'a>>,
         Option<Expression<'a>>,
-        Vec<Box<Statement<'a>>>,
+        Vec<Statement<'a>>,
     ),
 }
 
@@ -33,8 +29,8 @@ pub enum Expression<'a> {
     Literal(PrimitiveType),
     Variable(&'a str),
     FieldVariable(Box<Expression<'a>>),
-    ArrayVariable(&'a str, Vec<Box<Expression<'a>>>),
-    Grouping(Vec<Box<Expression<'a>>>),
+    ArrayVariable(&'a str, Vec<Expression<'a>>),
+    Grouping(Vec<Expression<'a>>),
     Function(&'a str, Box<Vec<Expression<'a>>>),
     Unary(UnaryOperator, Box<Expression<'a>>),
     Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
@@ -221,13 +217,10 @@ impl<'a> ExpressionTrace<'a> {
     }
 
     pub fn push(&mut self, item: ExpressionItem<'a>) -> &Self {
-        match &item {
-            ExpressionItem::IncompleteBinary(op) => {
-                if op.precedence() >= self.highest_precedence() {
-                    self.reduce(op.precedence());
-                }
+        if let ExpressionItem::IncompleteBinary(op) = &item {
+            if op.precedence() >= self.highest_precedence() {
+                self.reduce(op.precedence());
             }
-            _ => {}
         }
         self.stack.push(item);
         self

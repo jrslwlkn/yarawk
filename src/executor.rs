@@ -50,7 +50,7 @@ impl<'a> Environment<'a> {
             .get_variable(&"RS".to_string())
             .to_string()
             .as_bytes()
-            .get(0)
+            .first()
             .unwrap_or(&b'\n')
     }
 
@@ -65,23 +65,19 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn get_array_variable(
-        &mut self,
-        name: String,
-        accessors: &Vec<Box<Expression<'a>>>,
-    ) -> Value {
-        let variable = match self.get_variable(&name.to_string()) {
+    pub fn get_array_variable(&mut self, name: String, accessors: &[Expression<'a>]) -> Value {
+        let variable = match self.get_variable(&name) {
             Value::ArrayType(val) => val,
             _ => HashMap::new(),
         };
         let prev_subsep = self.get_variable(&"SUBSEP".to_string());
         self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
         let key = accessors
-            .into_iter()
+            .iter()
             .map(|e| self.evaluate(e).to_string())
             .reduce(|mut acc, x| {
                 acc.push_str(x.as_str());
-                acc.push_str(",");
+                acc.push(',');
                 acc
             })
             .unwrap();
@@ -93,24 +89,19 @@ impl<'a> Environment<'a> {
         ret
     }
 
-    fn set_array_variable(
-        &mut self,
-        name: String,
-        accessors: &Vec<Box<Expression<'a>>>,
-        value: Value,
-    ) {
-        let mut variable = match self.get_variable(&name.to_string()) {
+    fn set_array_variable(&mut self, name: String, accessors: &Vec<Expression<'a>>, value: Value) {
+        let mut variable = match self.get_variable(&name) {
             Value::ArrayType(val) => val,
             _ => HashMap::new(),
         };
         let prev_subsep = self.get_variable(&"SUBSEP".to_string());
         self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
         let key = accessors
-            .into_iter()
+            .iter()
             .map(|e| self.evaluate(e).to_string())
             .reduce(|mut acc, x| {
                 acc.push_str(x.as_str());
-                acc.push_str(",");
+                acc.push(',');
                 acc
             })
             .unwrap();
@@ -121,13 +112,13 @@ impl<'a> Environment<'a> {
 
     pub fn execute_begin(&mut self) {
         for s in &self.program.begin {
-            self.execute_one(&s);
+            self.execute_one(s);
         }
     }
 
     pub fn execute_end(&mut self) {
         for s in &self.program.end {
-            self.execute_one(&s);
+            self.execute_one(s);
         }
     }
 
@@ -138,7 +129,7 @@ impl<'a> Environment<'a> {
         let mut i = 1;
         for val in record.split(&fs) {
             let val = val.trim();
-            if val.len() > 0 {
+            if !val.is_empty() {
                 self.set_variable(i.to_string(), Value::from_string(val.to_string()));
                 i += 1;
             }
@@ -179,7 +170,7 @@ impl<'a> Environment<'a> {
                         // we're in running range, test if should stop
                         match self.evaluate(expressions.get(1).unwrap()) {
                             Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
-                                if self.match_first(&record.to_string(), &p).0 > 0 {
+                                if self.match_first(record, &p).0 > 0 {
                                     self.ranges_flags[range_idx] = false;
                                     self.execute_in_action(statements);
                                 }
@@ -195,13 +186,12 @@ impl<'a> Environment<'a> {
                         let mut cur_record = record;
                         match self.evaluate(expressions.get(0).unwrap()) {
                             Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
-                                let (match_start, match_len) =
-                                    self.match_first(&cur_record.to_string(), &p);
+                                let (match_start, match_len) = self.match_first(cur_record, &p);
                                 if match_start > 0 {
                                     cur_record = &cur_record[(match_start + match_len - 1)..];
                                     self.ranges_flags[range_idx] = true;
                                     self.execute_in_action(statements);
-                                    if self.match_first(&cur_record.to_string(), &p).0 > 0 {
+                                    if self.match_first(cur_record, &p).0 > 0 {
                                         // range ends within record
                                         self.ranges_flags[range_idx] = false;
                                     }
@@ -224,7 +214,7 @@ impl<'a> Environment<'a> {
         }
     }
 
-    fn execute(&mut self, statements: &Vec<Box<Statement<'a>>>) -> Value {
+    fn execute(&mut self, statements: &Vec<Statement<'a>>) -> Value {
         let mut ret = Value::Empty;
         for s in statements {
             match self.execute_one(s) {
@@ -251,7 +241,7 @@ impl<'a> Environment<'a> {
                 }
             }
         }
-        if statements.len() == 0
+        if statements.is_empty()
             || statements.len() == 1 && *statements.get(0).unwrap() == Statement::Empty
         {
             // default statement in actions is print current record
@@ -260,15 +250,15 @@ impl<'a> Environment<'a> {
         ret
     }
 
-    fn execute_in_loop(&mut self, statements: &Vec<Box<Statement<'a>>>) -> Value {
+    fn execute_in_loop(&mut self, statements: &Vec<Statement<'a>>) -> Value {
         let mut ret = Value::Empty;
         for s in statements {
-            match *s.clone() {
+            match s {
                 Statement::Continue => break,
                 Statement::Break => {
                     return Value::Empty;
                 }
-                s => match self.execute_one(&s) {
+                s => match self.execute_one(s) {
                     Value::Empty => {}
                     val => {
                         ret = val;
@@ -284,7 +274,7 @@ impl<'a> Environment<'a> {
         match statement {
             Statement::Empty => Value::Empty,
             Statement::Exit(e) => {
-                std::process::exit(self.evaluate(&e).to_int().try_into().unwrap_or(-69420));
+                std::process::exit(self.evaluate(e).to_int().try_into().unwrap_or(-69420));
             }
             Statement::Return(e) => self.evaluate(e),
             Statement::Next => todo!(),
@@ -399,7 +389,7 @@ impl<'a> Environment<'a> {
                 self.get_array_variable(name.to_string(), expressions)
             }
             Expression::FieldVariable(e) => {
-                let name = self.evaluate(&e).to_string();
+                let name = self.evaluate(e).to_string();
                 self.get_variable(&name)
             }
             Expression::Grouping(expressions) => {
@@ -509,11 +499,9 @@ impl<'a> Environment<'a> {
                     }
                     _ => panic!("expected: [variable][--], received: {:?}", val),
                 },
-                UnaryOperator::Not => Value::from_int(if self.evaluate(&val).is_truthy() {
-                    0
-                } else {
-                    1
-                }),
+                UnaryOperator::Not => {
+                    Value::from_int(if self.evaluate(val).is_truthy() { 0 } else { 1 })
+                }
             },
             Expression::Binary(op, lhs_expression, rhs_expression) => {
                 let lhs = self.evaluate(lhs_expression);
@@ -678,11 +666,11 @@ impl<'a> Environment<'a> {
                                     Value::from_string(",".to_string()),
                                 );
                                 let key = expressions
-                                    .into_iter()
-                                    .map(|e| self.evaluate(&e).to_string())
+                                    .iter()
+                                    .map(|e| self.evaluate(e).to_string())
                                     .reduce(|mut acc, x| {
                                         acc.push_str(x.as_str());
-                                        acc.push_str(",");
+                                        acc.push(',');
                                         acc
                                     })
                                     .unwrap();
@@ -752,10 +740,10 @@ impl<'a> Environment<'a> {
         }
     }
 
-    fn match_first(&mut self, lhs: &String, rhs: &Regex) -> (usize, usize) {
+    fn match_first(&mut self, lhs: &str, rhs: &Regex) -> (usize, usize) {
         // ([idx where match started, 1-based], [match length])
         let mut captures = rhs.captures_iter(lhs);
-        match captures.nth(0) {
+        match captures.next() {
             None => (0, 0),
             Some(c) => (
                 c.get(0).unwrap().start() + 1,
@@ -766,7 +754,7 @@ impl<'a> Environment<'a> {
 
     fn get_variable(&self, name: &String) -> Value {
         match self.local_scope.get(name) {
-            None => self.variables.get(name).unwrap_or(&&Value::Empty).clone(),
+            None => self.variables.get(name).unwrap_or(&Value::Empty).clone(),
             Some(val) => val.clone(),
         }
     }
@@ -839,23 +827,20 @@ impl PartialEq for Value {
     }
 }
 
-impl<'a> Value {
+impl Value {
     pub fn default() -> Self {
         Self::from_primitive(&PrimitiveType::Integer(0))
     }
 
     pub fn is_empty(&self) -> bool {
-        match self {
-            Self::Empty => true,
-            _ => false,
-        }
+        matches!(self, Self::Empty)
     }
 
     fn is_truthy(&self) -> bool {
         match self {
             Self::PrimitiveType(PrimitiveType::Integer(v)) => *v != 0,
             Self::PrimitiveType(PrimitiveType::Float(v)) => *v != 0.0,
-            Self::PrimitiveType(PrimitiveType::String(v)) => *v != "",
+            Self::PrimitiveType(PrimitiveType::String(v)) => !v.is_empty(),
             Self::PrimitiveType(PrimitiveType::Pattern(_)) => true,
             Self::ArrayType(_) => true,
             Self::Empty => false,
@@ -872,7 +857,7 @@ impl<'a> Value {
             Self::PrimitiveType(val) => val.to_string(),
             Self::ArrayType(elements) => {
                 let mut ret = String::new();
-                ret.push_str("[");
+                ret.push('[');
                 for (k, v) in elements {
                     ret.push_str(k);
                     ret.push_str(": ");
@@ -882,7 +867,7 @@ impl<'a> Value {
                 if !elements.is_empty() {
                     ret = ret[0..ret.len() - 2].to_string();
                 }
-                ret.push_str("]");
+                ret.push(']');
                 ret
             }
         }
@@ -906,10 +891,7 @@ impl<'a> Value {
             Self::PrimitiveType(val) => match val {
                 PrimitiveType::Integer(v) => *v,
                 PrimitiveType::Float(v) => *v as i64,
-                PrimitiveType::String(v) => match v.parse::<i64>() {
-                    Ok(ret) => ret,
-                    Err(_) => 0,
-                },
+                PrimitiveType::String(v) => v.parse::<i64>().unwrap_or(0),
                 PrimitiveType::Pattern(_) => 0,
             },
             Self::ArrayType(_) => 0,
@@ -926,10 +908,7 @@ impl<'a> Value {
             Self::PrimitiveType(val) => match val {
                 PrimitiveType::Integer(v) => *v as f64,
                 PrimitiveType::Float(v) => *v,
-                PrimitiveType::String(v) => match v.parse::<f64>() {
-                    Ok(ret) => ret,
-                    Err(_) => 0.0,
-                },
+                PrimitiveType::String(v) => v.parse::<f64>().unwrap_or(0.0),
                 PrimitiveType::Pattern(_) => 0.0,
             },
             Self::ArrayType(_) => 0.0,

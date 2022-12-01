@@ -65,16 +65,17 @@ impl<'a> Parser<'a> {
         let name_token = self.tokens.peek_next();
         let mut name: &'a str = "";
         match name_token {
-            Some(t) => match t.value {
-                TokenType::Identifier(n) => name = n,
-                _ => {}
-            },
+            Some(t) => {
+                if let TokenType::Identifier(n) = t.value {
+                    name = n
+                }
+            }
             None => {}
         }
         self.advance(vec![TokenType::Identifier(""), TokenType::LeftParen]);
         let mut is_first = true;
         let mut params = Vec::<&'a str>::new();
-        while !self.tokens.peek_next().is_none() && !self.check_one(TokenType::RightParen) {
+        while self.tokens.peek_next().is_some() && !self.check_one(TokenType::RightParen) {
             if !is_first {
                 self.advance_one(TokenType::Comma);
             }
@@ -129,16 +130,6 @@ impl<'a> Parser<'a> {
                 // no need to keep trailing empty expressions
                 ret.push(s);
             }
-        }
-        ret
-    }
-
-    fn boxed_statements(&mut self) -> Vec<Box<Statement<'a>>> {
-        // parse statements either until the end of the tokens or until we encounter a right curly
-        self.skip_newlines_and_semicolons();
-        let mut ret = Vec::<Box<Statement<'a>>>::new();
-        while self.tokens.current().is_some() && !self.check_one(TokenType::RightCurly) {
-            ret.push(Box::new(self.statement()));
         }
         ret
     }
@@ -207,36 +198,36 @@ impl<'a> Parser<'a> {
                     self.advance(vec![TokenType::If, TokenType::LeftParen]);
                     let cond = self.expression(ExpressionTrace::new());
                     self.advance_one(TokenType::RightParen);
-                    let mut ifs = Vec::<Box<Statement<'a>>>::new();
-                    let mut elses = Vec::<Box<Statement<'a>>>::new();
+                    let mut ifs = vec![];
+                    let mut elses = vec![];
                     if self.check_one(TokenType::LeftCurly) {
                         self.skip_by(1);
-                        ifs.extend(self.boxed_statements());
+                        ifs.extend(self.statements());
                         self.advance_one(TokenType::RightCurly);
                     } else {
-                        ifs.push(Box::new(self.statement()));
+                        ifs.push(self.statement());
                     }
                     if self.check_one(TokenType::Else) {
                         self.skip_by(1);
                         if self.check_one(TokenType::LeftCurly) {
                             self.skip_by(1);
-                            elses.extend(self.boxed_statements());
+                            elses.extend(self.statements());
                             self.advance_one(TokenType::RightCurly);
                         } else {
-                            elses.push(Box::new(self.statement()));
+                            elses.push(self.statement());
                         }
                     }
                     Statement::If(cond, ifs, elses)
                 }
                 TokenType::Do => {
                     self.advance_one(TokenType::Do);
-                    let mut statements = Vec::<Box<Statement<'a>>>::new();
+                    let mut statements = vec![];
                     if self.check_one(TokenType::LeftCurly) {
                         self.advance_one(TokenType::LeftCurly);
-                        statements.extend(self.boxed_statements());
+                        statements.extend(self.statements());
                         self.advance_one(TokenType::RightCurly);
                     } else {
-                        statements.push(Box::new(self.statement()));
+                        statements.push(self.statement());
                     }
                     self.advance(vec![TokenType::While, TokenType::LeftParen]);
                     let cond = self.expression(ExpressionTrace::new());
@@ -247,13 +238,13 @@ impl<'a> Parser<'a> {
                     self.advance(vec![TokenType::While, TokenType::LeftParen]);
                     let cond = self.expression(ExpressionTrace::new());
                     self.advance_one(TokenType::RightParen);
-                    let mut statements = Vec::<Box<Statement<'a>>>::new();
+                    let mut statements = vec![];
                     if self.check_one(TokenType::LeftCurly) {
                         self.advance_one(TokenType::LeftCurly);
-                        statements.extend(self.boxed_statements());
+                        statements.extend(self.statements());
                         self.advance_one(TokenType::RightCurly);
                     } else {
-                        statements.push(Box::new(self.statement()));
+                        statements.push(self.statement());
                     }
                     Statement::While(cond, statements)
                 }
@@ -273,15 +264,15 @@ impl<'a> Parser<'a> {
                         })
                     }
                     self.advance_one(TokenType::RightParen);
-                    let mut statements = Vec::<Box<Statement<'a>>>::new();
+                    let mut statements = vec![];
                     if self.check_one(TokenType::LeftCurly) {
                         self.skip_by(1);
-                        statements.extend(self.boxed_statements());
+                        statements.extend(self.statements());
                         self.advance_one(TokenType::RightCurly);
                     } else {
                         let s = self.statement();
                         if s != Statement::Empty && s != Statement::Expression(Expression::Empty) {
-                            statements.push(Box::new(s));
+                            statements.push(s);
                         }
                     }
                     Statement::For(expression1, expression2, expression3, statements)
@@ -306,7 +297,7 @@ impl<'a> Parser<'a> {
                     }
                     TokenType::LeftParen => {
                         self.skip_by(1);
-                        expression = Expression::Grouping(self.boxed_comma_separated_expressions());
+                        expression = Expression::Grouping(self.comma_separated_expressions());
                         let ret = self.extended_expression(expression, &mut trace);
                         self.advance_one(TokenType::RightParen);
                         self.extended_expression(ret, &mut trace)
@@ -326,7 +317,7 @@ impl<'a> Parser<'a> {
                                     )
                                 }
                                 TokenType::Literal(PrimitiveType::Integer(value)) => {
-                                    let v = value.clone();
+                                    let v = *value;
                                     self.skip_by(2); // $ plus Literal
                                     self.extended_expression(
                                     Expression::FieldVariable(Box::new(Expression::Literal(PrimitiveType::Integer(v)))),
@@ -370,10 +361,8 @@ impl<'a> Parser<'a> {
                         // parse (associative/multidimentional/regular) array access
                         let name = *name;
                         self.skip_by(2);
-                        let ret = Expression::ArrayVariable(
-                            name,
-                            self.boxed_comma_separated_expressions(),
-                        );
+                        let ret =
+                            Expression::ArrayVariable(name, self.comma_separated_expressions());
                         self.advance_one(TokenType::RightBracket);
                         self.extended_expression(ret, &mut trace)
                     }
@@ -392,12 +381,12 @@ impl<'a> Parser<'a> {
                         let val = &e.value.clone();
                         self.skip_by(1);
                         expression = Expression::Unary(
-                            match val {
-                                &TokenType::Plus => UnaryOperator::PrePlus,
-                                &TokenType::Minus => UnaryOperator::PreMinus,
-                                &TokenType::Not => UnaryOperator::Not,
-                                &TokenType::PlusPlus => UnaryOperator::PrePlusPlus,
-                                &TokenType::MinusMinus => UnaryOperator::PreMinusMinus,
+                            match *val {
+                                TokenType::Plus => UnaryOperator::PrePlus,
+                                TokenType::Minus => UnaryOperator::PreMinus,
+                                TokenType::Not => UnaryOperator::Not,
+                                TokenType::PlusPlus => UnaryOperator::PrePlusPlus,
+                                TokenType::MinusMinus => UnaryOperator::PreMinusMinus,
                                 _ => unreachable!(),
                             },
                             Box::new(self.expression(ExpressionTrace::new())),
@@ -589,22 +578,6 @@ impl<'a> Parser<'a> {
         ret
     }
 
-    fn boxed_comma_separated_expressions(&mut self) -> Vec<Box<Expression<'a>>> {
-        let mut ret = Vec::<Box<Expression<'a>>>::new();
-        let mut is_first = true;
-        while self.tokens.current().is_some()
-            && !self.check_one(TokenType::RightParen)
-            && !self.check_one(TokenType::RightBracket)
-        {
-            if !is_first {
-                self.advance_one(TokenType::Comma);
-            }
-            ret.push(Box::new(self.expression(ExpressionTrace::new())));
-            is_first = false;
-        }
-        ret
-    }
-
     fn check(&self, types: Vec<TokenType<'a>>) -> bool {
         let mut cur = self.tokens.clone();
         for t in types {
@@ -786,9 +759,9 @@ mod tests {
                 (vec![], vec![]),
                 (vec![], vec![Statement::Print(vec![])]),
                 (
-                    vec![Expression::Grouping(vec![Box::new(Expression::Literal(
+                    vec![Expression::Grouping(vec![Expression::Literal(
                         PrimitiveType::Integer(1)
-                    ))])],
+                    )])],
                     vec![Statement::Print(vec![])]
                 ),
                 (
@@ -1089,14 +1062,14 @@ mod tests {
         assert_eq!(
             prog.end,
             vec![Statement::Print(vec![Expression::Grouping(vec![
-                Box::new(Expression::Binary(
+                Expression::Binary(
                     BinaryOperator::Plus,
                     Box::new(Expression::Unary(
                         UnaryOperator::PostPlusPlus,
                         Box::new(Expression::Variable("a"))
                     )),
                     Box::new(Expression::Literal(PrimitiveType::Integer(42)))
-                ))
+                )
             ])])]
         )
     }
@@ -1155,11 +1128,11 @@ mod tests {
                                 Box::new(Expression::Variable("a")),
                                 Box::new(Expression::Literal(PrimitiveType::Integer(3)))
                             )),
-                            Box::new(Expression::Grouping(vec![Box::new(Expression::Binary(
+                            Box::new(Expression::Grouping(vec![Expression::Binary(
                                 BinaryOperator::Minus,
                                 Box::new(Expression::Variable("a")),
                                 Box::new(Expression::Literal(PrimitiveType::Integer(1)))
-                            ))]))
+                            )]))
                         ))
                     )),
                     Box::new(Expression::Literal(PrimitiveType::Integer(1)))
@@ -1408,17 +1381,17 @@ mod tests {
             vec![
                 Statement::If(
                     Expression::Literal(PrimitiveType::Integer(1)),
-                    vec![Box::new(Statement::Print(vec![]))],
+                    vec![Statement::Print(vec![])],
                     vec![]
                 ),
                 Statement::If(
                     Expression::Literal(PrimitiveType::Integer(1)),
-                    vec![Box::new(Statement::Print(vec![]))],
+                    vec![Statement::Print(vec![])],
                     vec![]
                 ),
                 Statement::If(
                     Expression::Literal(PrimitiveType::Integer(1)),
-                    vec![Box::new(Statement::Print(vec![]))],
+                    vec![Statement::Print(vec![])],
                     vec![]
                 ),
             ]
@@ -1451,12 +1424,12 @@ mod tests {
             prog.begin,
             vec![Statement::If(
                 Expression::Literal(PrimitiveType::Integer(1)),
-                vec![Box::new(Statement::Print(vec![Expression::Literal(
+                vec![Statement::Print(vec![Expression::Literal(
                     PrimitiveType::Integer(1)
-                ),]))],
-                vec![Box::new(Statement::Print(vec![Expression::Literal(
+                ),])],
+                vec![Statement::Print(vec![Expression::Literal(
                     PrimitiveType::Integer(2)
-                ),]))],
+                ),])],
             ),]
         )
     }
@@ -1526,22 +1499,22 @@ mod tests {
             prog.begin,
             vec![Statement::If(
                 Expression::Literal(PrimitiveType::String("1".to_string())),
-                vec![Box::new(Statement::Print(vec![Expression::Literal(
+                vec![Statement::Print(vec![Expression::Literal(
                     PrimitiveType::String("1".to_string())
-                ),]))],
-                vec![Box::new(Statement::If(
+                ),])],
+                vec![Statement::If(
                     Expression::Literal(PrimitiveType::String("2".to_string())),
-                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    vec![Statement::Print(vec![Expression::Literal(
                         PrimitiveType::String("2".to_string())
-                    )]))],
-                    vec![Box::new(Statement::If(
+                    )])],
+                    vec![Statement::If(
                         Expression::Literal(PrimitiveType::String("3".to_string())),
-                        vec![Box::new(Statement::Print(vec![Expression::Literal(
+                        vec![Statement::Print(vec![Expression::Literal(
                             PrimitiveType::String("3".to_string())
-                        )]))],
+                        )])],
                         vec![]
-                    ))]
-                ))],
+                    )]
+                )],
             ),]
         )
     }
@@ -1620,24 +1593,24 @@ mod tests {
             prog.begin,
             vec![Statement::If(
                 Expression::Literal(PrimitiveType::String("1".to_string())),
-                vec![Box::new(Statement::Print(vec![Expression::Literal(
+                vec![Statement::Print(vec![Expression::Literal(
                     PrimitiveType::String("1".to_string())
-                ),]))],
-                vec![Box::new(Statement::If(
+                ),])],
+                vec![Statement::If(
                     Expression::Literal(PrimitiveType::String("2".to_string())),
-                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    vec![Statement::Print(vec![Expression::Literal(
                         PrimitiveType::String("2".to_string())
-                    )]))],
-                    vec![Box::new(Statement::If(
+                    )])],
+                    vec![Statement::If(
                         Expression::Literal(PrimitiveType::String("3".to_string())),
-                        vec![Box::new(Statement::Print(vec![Expression::Literal(
+                        vec![Statement::Print(vec![Expression::Literal(
                             PrimitiveType::String("3".to_string())
-                        )]))],
-                        vec![Box::new(Statement::Print(vec![Expression::Literal(
+                        )])],
+                        vec![Statement::Print(vec![Expression::Literal(
                             PrimitiveType::String("4".to_string())
-                        )]))],
-                    ))]
-                ))],
+                        )])],
+                    )]
+                )],
             ),]
         )
     }
@@ -1763,21 +1736,21 @@ mod tests {
             prog.begin,
             vec![
                 Statement::DoWhile(
-                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    vec![Statement::Print(vec![Expression::Literal(
                         PrimitiveType::String("hello".to_string())
-                    )]))],
+                    )])],
                     Expression::Literal(PrimitiveType::Integer(1))
                 ),
                 Statement::DoWhile(
-                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    vec![Statement::Print(vec![Expression::Literal(
                         PrimitiveType::String("hello".to_string())
-                    )]))],
+                    )])],
                     Expression::Literal(PrimitiveType::Integer(1))
                 ),
                 Statement::DoWhile(
-                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    vec![Statement::Print(vec![Expression::Literal(
                         PrimitiveType::String("hello".to_string())
-                    )]))],
+                    )])],
                     Expression::Literal(PrimitiveType::Integer(1))
                 ),
             ]
@@ -1843,19 +1816,19 @@ mod tests {
             vec![
                 Statement::While(
                     Expression::Literal(PrimitiveType::Integer(1)),
-                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    vec![Statement::Print(vec![Expression::Literal(
                         PrimitiveType::String("hello".to_string())
-                    )]))],
+                    )])],
                 ),
                 Statement::While(
                     Expression::Literal(PrimitiveType::Integer(1)),
-                    vec![Box::new(Statement::Empty)],
+                    vec![Statement::Empty],
                 ),
                 Statement::While(
                     Expression::Literal(PrimitiveType::Integer(1)),
-                    vec![Box::new(Statement::Print(vec![Expression::Literal(
+                    vec![Statement::Print(vec![Expression::Literal(
                         PrimitiveType::String("hello".to_string())
-                    )]))],
+                    )])],
                 ),
             ]
         )
@@ -1937,7 +1910,7 @@ mod tests {
                         UnaryOperator::PrePlusPlus,
                         Box::new(Expression::Variable("i"))
                     )),
-                    vec![Box::new(Statement::Print(vec![Expression::Variable("i")]))]
+                    vec![Statement::Print(vec![Expression::Variable("i")])]
                 ),
             ]
         )
@@ -1993,7 +1966,7 @@ mod tests {
                         Box::new(Expression::Variable("a")),
                         Box::new(Expression::ArrayVariable(
                             "b",
-                            vec![Box::new(Expression::Variable("c"))]
+                            vec![Expression::Variable("c")]
                         ))
                     ),
                     None,

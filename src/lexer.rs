@@ -128,14 +128,14 @@ impl<'a> Lexer<'a> {
                         match self.chars.get(cur_pos) {
                             None => break,
                             Some(val) => match val {
-                                '\\' if !self.chars.get(cur_pos + 1).is_none()
+                                '\\' if self.chars.get(cur_pos + 1).is_some()
                                     && *self.chars.get(cur_pos + 1).unwrap() == '\n' =>
                                 {
                                     cur_pos += 2;
                                     newlines += 1;
                                     cur_col = 1;
                                 }
-                                '\\' if !self.chars.get(cur_pos + 1).is_none()
+                                '\\' if self.chars.get(cur_pos + 1).is_some()
                                     && *self.chars.get(cur_pos + 1).unwrap() == '/' =>
                                 {
                                     cur_pos += 2;
