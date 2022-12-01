@@ -35,7 +35,7 @@ pub enum Expression<'a> {
     FieldVariable(Box<Expression<'a>>),
     ArrayVariable(&'a str, Vec<Box<Expression<'a>>>),
     Grouping(Vec<Box<Expression<'a>>>),
-    Function(&'a str, u8, Box<Vec<Expression<'a>>>),
+    Function(&'a str, Box<Vec<Expression<'a>>>),
     Unary(UnaryOperator, Box<Expression<'a>>),
     Binary(BinaryOperator, Box<Expression<'a>>, Box<Expression<'a>>),
     Ternary(

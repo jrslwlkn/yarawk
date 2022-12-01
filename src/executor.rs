@@ -12,7 +12,7 @@ use crate::{
 pub struct Environment<'a> {
     program: &'a Program<'a>,
     variables: HashMap<String, Value>,
-    functions: HashMap<String, (u8, Vec<Statement<'a>>)>,
+    functions: HashMap<String, (Vec<&'a str>, Vec<Statement<'a>>)>,
     max_field: usize,
     ranges_flags: Vec<bool>, // if true for a given idx, then we're currently in this running range
     local_scope: HashMap<String, Value>,
@@ -35,12 +35,12 @@ impl<'a> Environment<'a> {
             ranges_flags: vec![],
             local_scope: HashMap::new(),
         };
-        for (name, arity, statements) in &program.functions {
+        for (name, params, statements) in &program.functions {
             if ret.functions.contains_key(*name) {
                 panic!("function {} already exists", name)
             }
             ret.functions
-                .insert(name.to_string(), (*arity, statements.clone()));
+                .insert(name.to_string(), (params.clone(), statements.clone()));
         }
         ret
     }
@@ -724,39 +724,25 @@ impl<'a> Environment<'a> {
                     self.evaluate(falsy)
                 }
             }
-            Expression::Function(name, arity, args) => {
-                let mut function = self
+            Expression::Function(name, args) => {
+                let function = self
                     .functions
                     .get(&name.to_string())
                     .expect(format!("function {} does not exist", name).as_str())
                     .clone();
-                if *arity > function.0 {
-                    panic!("function {} does not take {} arguments", name, *arity);
+                if args.len() > function.0.len() {
+                    panic!("function {} does not take {} arguments", name, args.len())
                 }
 
                 let prev_scope = self.local_scope.clone();
                 self.local_scope = HashMap::new();
-
-                // first <arity> statements are arg declarations
-                for _ in 0..function.0 {
-                    match function.1.get(0).unwrap() {
-                        Statement::Expression(Expression::Binary(BinaryOperator::Equal, e, _)) => {
-                            match **e {
-                                Expression::Variable(n) => {
-                                    let val = match args.get(0) {
-                                        None => Value::Empty,
-                                        Some(val) => self.evaluate(val),
-                                    };
-                                    self.local_scope.insert(n.to_string(), val);
-                                    function.1.remove(0);
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                        s => {
-                            panic!("unexpected {:?}", s)
-                        }
+                for i in 0..function.0.len() {
+                    let val = match args.get(i) {
+                        None => Value::Empty,
+                        Some(e) => self.evaluate(e),
                     };
+                    self.local_scope
+                        .insert(function.0.get(i).unwrap().to_string(), val);
                 }
                 let ret = self.execute_in_action(&function.1.to_vec());
                 self.local_scope = prev_scope;
@@ -816,29 +802,29 @@ impl<'a> Environment<'a> {
         ret
     }
 
-    fn default_functions() -> HashMap<String, (u8, Vec<Statement<'a>>)> {
+    fn default_functions() -> HashMap<String, (Vec<&'a str>, Vec<Statement<'a>>)> {
         let mut ret = HashMap::new();
-        ret.insert("atan2".to_string(), (2, vec![])); // TODO
-        ret.insert("cos".to_string(), (1, vec![])); // TODO
-        ret.insert("sin".to_string(), (1, vec![])); // TODO
-        ret.insert("exp".to_string(), (1, vec![])); // TODO
-        ret.insert("log".to_string(), (1, vec![])); // TODO
-        ret.insert("sqrt".to_string(), (1, vec![])); // TODO
-        ret.insert("int".to_string(), (1, vec![])); // TODO
-        ret.insert("rand".to_string(), (1, vec![])); // TODO
-        ret.insert("srand".to_string(), (1, vec![])); // TODO
-        ret.insert("gsub".to_string(), (3, vec![])); // TODO
-        ret.insert("index".to_string(), (2, vec![])); // TODO
-        ret.insert("length".to_string(), (1, vec![])); // TODO
-        ret.insert("match".to_string(), (2, vec![])); // TODO
-        ret.insert("split".to_string(), (3, vec![])); // TODO
-        ret.insert("sprintf".to_string(), (2, vec![])); // TODO
-        ret.insert("sub".to_string(), (3, vec![])); // TODO
-        ret.insert("substr".to_string(), (3, vec![])); // TODO
-        ret.insert("tolower".to_string(), (1, vec![])); // TODO
-        ret.insert("toupper".to_string(), (1, vec![])); // TODO
-        ret.insert("close".to_string(), (1, vec![])); // TODO
-        ret.insert("system".to_string(), (1, vec![])); // TODO
+        ret.insert("atan2".to_string(), (vec![], vec![])); // TODO
+        ret.insert("cos".to_string(), (vec![], vec![])); // TODO
+        ret.insert("sin".to_string(), (vec![], vec![])); // TODO
+        ret.insert("exp".to_string(), (vec![], vec![])); // TODO
+        ret.insert("log".to_string(), (vec![], vec![])); // TODO
+        ret.insert("sqrt".to_string(), (vec![], vec![])); // TODO
+        ret.insert("int".to_string(), (vec![], vec![])); // TODO
+        ret.insert("rand".to_string(), (vec![], vec![])); // TODO
+        ret.insert("srand".to_string(), (vec![], vec![])); // TODO
+        ret.insert("gsub".to_string(), (vec![], vec![])); // TODO
+        ret.insert("index".to_string(), (vec![], vec![])); // TODO
+        ret.insert("length".to_string(), (vec![], vec![])); // TODO
+        ret.insert("match".to_string(), (vec![], vec![])); // TODO
+        ret.insert("split".to_string(), (vec![], vec![])); // TODO
+        ret.insert("sprintf".to_string(), (vec![], vec![])); // TODO
+        ret.insert("sub".to_string(), (vec![], vec![])); // TODO
+        ret.insert("substr".to_string(), (vec![], vec![])); // TODO
+        ret.insert("tolower".to_string(), (vec![], vec![])); // TODO
+        ret.insert("toupper".to_string(), (vec![], vec![])); // TODO
+        ret.insert("close".to_string(), (vec![], vec![])); // TODO
+        ret.insert("system".to_string(), (vec![], vec![])); // TODO
         ret
     }
 }
