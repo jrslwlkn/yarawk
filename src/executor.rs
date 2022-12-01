@@ -1,5 +1,5 @@
 use core::panic;
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use regex::Regex;
 
@@ -63,6 +63,60 @@ impl<'a> Environment<'a> {
                 self.local_scope.insert(name, val);
             }
         }
+    }
+
+    pub fn get_array_variable(
+        &mut self,
+        name: String,
+        accessors: &Vec<Box<Expression<'a>>>,
+    ) -> Value {
+        let variable = match self.get_variable(&name.to_string()) {
+            Value::ArrayType(val) => val,
+            _ => HashMap::new(),
+        };
+        let prev_subsep = self.get_variable(&"SUBSEP".to_string());
+        self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
+        let key = accessors
+            .into_iter()
+            .map(|e| self.evaluate(e).to_string())
+            .reduce(|mut acc, x| {
+                acc.push_str(x.as_str());
+                acc.push_str(",");
+                acc
+            })
+            .unwrap();
+        let ret = match variable.get(&key) {
+            None => Value::Empty,
+            Some(v) => Value::from_primitive(v),
+        };
+        self.set_variable("SUBSEP".to_string(), prev_subsep);
+        ret
+    }
+
+    fn set_array_variable(
+        &mut self,
+        name: String,
+        accessors: &Vec<Box<Expression<'a>>>,
+        value: Value,
+    ) {
+        let mut variable = match self.get_variable(&name.to_string()) {
+            Value::ArrayType(val) => val,
+            _ => HashMap::new(),
+        };
+        let prev_subsep = self.get_variable(&"SUBSEP".to_string());
+        self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
+        let key = accessors
+            .into_iter()
+            .map(|e| self.evaluate(e).to_string())
+            .reduce(|mut acc, x| {
+                acc.push_str(x.as_str());
+                acc.push_str(",");
+                acc
+            })
+            .unwrap();
+        variable.insert(key, value.to_primitive());
+        self.set_variable("SUBSEP".to_string(), prev_subsep);
+        self.set_variable(name, Value::ArrayType(variable));
     }
 
     pub fn execute_begin(&mut self) {
@@ -342,33 +396,22 @@ impl<'a> Environment<'a> {
             Expression::Literal(val) => Value::from_primitive(val),
             Expression::Variable(name) => self.get_variable(&name.to_string()),
             Expression::ArrayVariable(name, expressions) => {
-                let val = match self.get_variable(&name.to_string()) {
-                    Value::ArrayType(val) => val,
-                    _ => panic!("{} is not array variable", name),
-                };
-                let prev_subsep = self.get_variable(&"SUBSEP".to_string());
-                self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
-                let key = expressions
-                    .into_iter()
-                    .map(|e| self.evaluate(e).to_string())
-                    .reduce(|mut acc, x| {
-                        acc.push_str(x.as_str());
-                        acc.push_str(",");
-                        acc
-                    })
-                    .unwrap();
-                let ret = match val.get(&key) {
-                    None => Value::Empty,
-                    Some(v) => Value::from_primitive(v),
-                };
-                self.set_variable("SUBSEP".to_string(), prev_subsep);
-                ret
+                self.get_array_variable(name.to_string(), expressions)
             }
             Expression::FieldVariable(e) => {
                 let name = self.evaluate(&e).to_string();
                 self.get_variable(&name)
             }
-            Expression::Grouping(expressions) => self.evaluate(expressions.get(0).unwrap()), //FIXME: should we handle (x,y,z) thingys here?
+            Expression::Grouping(expressions) => {
+                if expressions.len() != 1 {
+                    panic!(
+                        "expected 1 expression, received: {}, {:?}",
+                        expressions.len(),
+                        *expressions
+                    )
+                }
+                self.evaluate(expressions.get(0).unwrap())
+            }
             Expression::Unary(op, val) => match op {
                 UnaryOperator::PrePlus => match self.evaluate(val) {
                     Value::PrimitiveType(PrimitiveType::Integer(val)) => Value::from_int(val),
@@ -381,27 +424,89 @@ impl<'a> Environment<'a> {
                     _ => Value::default(),
                 },
                 UnaryOperator::PrePlusPlus => match *val.clone() {
-                    Expression::Variable(name) => todo!(),
-                    Expression::ArrayVariable(name, expressions) => todo!(),
-                    Expression::FieldVariable(expression) => todo!(),
+                    Expression::Variable(name) => {
+                        let ret = Self::add_int(self.evaluate(val), 1);
+                        self.set_variable(name.to_string(), ret.clone());
+                        ret
+                    }
+                    Expression::ArrayVariable(name, accessors) => {
+                        let val = self.get_array_variable(name.to_string(), &accessors);
+                        let ret = Self::add_int(val, 1);
+                        self.set_array_variable(name.to_string(), &accessors, ret.clone());
+                        ret
+                    }
+                    Expression::FieldVariable(expression) => {
+                        let name = self.evaluate(&*expression).to_string();
+                        let ret = Self::add_int(self.evaluate(val), 1);
+                        self.set_variable(name, ret.clone());
+                        ret
+                    }
                     _ => panic!("expected: [++][variable], received: {:?}", val),
                 },
                 UnaryOperator::PreMinusMinus => match *val.clone() {
-                    Expression::Variable(name) => todo!(),
-                    Expression::ArrayVariable(name, expressions) => todo!(),
-                    Expression::FieldVariable(expression) => todo!(),
+                    Expression::Variable(name) => {
+                        let ret = Self::add_int(self.evaluate(val), -1);
+                        self.set_variable(name.to_string(), ret.clone());
+                        ret
+                    }
+                    Expression::ArrayVariable(name, accessors) => {
+                        let val = self.get_array_variable(name.to_string(), &accessors);
+                        let ret = Self::add_int(val, -1);
+                        self.set_array_variable(name.to_string(), &accessors, ret.clone());
+                        ret
+                    }
+                    Expression::FieldVariable(expression) => {
+                        let name = self.evaluate(&*expression).to_string();
+                        let ret = Self::add_int(self.evaluate(val), -1);
+                        self.set_variable(name, ret.clone());
+                        ret
+                    }
                     _ => panic!("expected: [--][variable], received: {:?}", val),
                 },
                 UnaryOperator::PostPlusPlus => match *val.clone() {
-                    Expression::Variable(name) => todo!(),
-                    Expression::ArrayVariable(name, expressions) => todo!(),
-                    Expression::FieldVariable(expression) => todo!(),
+                    Expression::Variable(name) => {
+                        let ret = self.evaluate(val);
+                        self.set_variable(name.to_string(), Self::add_int(ret.clone(), 1));
+                        ret
+                    }
+                    Expression::ArrayVariable(name, accessors) => {
+                        let ret = self.get_array_variable(name.to_string(), &accessors);
+                        self.set_array_variable(
+                            name.to_string(),
+                            &accessors,
+                            Self::add_int(ret.clone(), 1),
+                        );
+                        ret
+                    }
+                    Expression::FieldVariable(expression) => {
+                        let name = self.evaluate(&*expression).to_string();
+                        let ret = self.evaluate(val);
+                        self.set_variable(name, Self::add_int(ret.clone(), 1));
+                        ret
+                    }
                     _ => panic!("expected: [variable][++] , received: {:?}", val),
                 },
                 UnaryOperator::PostMinusMinus => match *val.clone() {
-                    Expression::Variable(name) => todo!(),
-                    Expression::ArrayVariable(name, expressions) => todo!(),
-                    Expression::FieldVariable(expression) => todo!(),
+                    Expression::Variable(name) => {
+                        let ret = self.evaluate(val);
+                        self.set_variable(name.to_string(), Self::add_int(ret.clone(), -1));
+                        ret
+                    }
+                    Expression::ArrayVariable(name, accessors) => {
+                        let ret = self.get_array_variable(name.to_string(), &accessors);
+                        self.set_array_variable(
+                            name.to_string(),
+                            &accessors,
+                            Self::add_int(ret.clone(), -1),
+                        );
+                        ret
+                    }
+                    Expression::FieldVariable(expression) => {
+                        let name = self.evaluate(&*expression).to_string();
+                        let ret = self.evaluate(val);
+                        self.set_variable(name, Self::add_int(ret.clone(), -1));
+                        ret
+                    }
                     _ => panic!("expected: [variable][--], received: {:?}", val),
                 },
                 UnaryOperator::Not => Value::from_int(if self.evaluate(&val).is_truthy() {
@@ -410,191 +515,208 @@ impl<'a> Environment<'a> {
                     1
                 }),
             },
-            Expression::Binary(op, lhs, rhs) => match op {
-                BinaryOperator::Concat => {
-                    let lhs = self.evaluate(lhs).to_string();
-                    let rhs = self.evaluate(rhs).to_string();
-                    let val = format!("{}{}", lhs, rhs);
-                    Value::from_string(val)
-                }
-                BinaryOperator::EqualEqual => {
-                    Value::from_int(if self.evaluate(lhs) == self.evaluate(rhs) {
-                        1
-                    } else {
-                        0
-                    })
-                }
-                BinaryOperator::NotEqual => {
-                    Value::from_int(if self.evaluate(lhs) != self.evaluate(rhs) {
-                        1
-                    } else {
-                        0
-                    })
-                }
-                BinaryOperator::LessThan => Value::from_int(
-                    if self.evaluate(lhs).cmp(&self.evaluate(rhs)) == Ordering::Less {
-                        1
-                    } else {
-                        0
-                    },
-                ),
-                BinaryOperator::GreaterThan => Value::from_int(
-                    if self.evaluate(lhs).cmp(&self.evaluate(rhs)) == Ordering::Greater {
-                        1
-                    } else {
-                        0
-                    },
-                ),
-                BinaryOperator::LessEqual => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    Value::from_int(match lhs.cmp(&rhs) {
-                        Ordering::Greater => 0,
-                        _ => 1,
-                    })
-                }
-                BinaryOperator::GreaterEqual => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    Value::from_int(match lhs.cmp(&rhs) {
-                        Ordering::Less => 0,
-                        _ => 1,
-                    })
-                }
-                BinaryOperator::Match => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    Value::from_int(
+            Expression::Binary(op, lhs_expression, rhs_expression) => {
+                let lhs = self.evaluate(lhs_expression);
+                let rhs = self.evaluate(rhs_expression);
+                match op {
+                    BinaryOperator::Concat => {
+                        let val = format!("{}{}", lhs.to_string(), rhs.to_string());
+                        Value::from_string(val)
+                    }
+                    BinaryOperator::EqualEqual => Value::from_int(if lhs == rhs { 1 } else { 0 }),
+                    BinaryOperator::NotEqual => Value::from_int(if lhs != rhs { 1 } else { 0 }),
+                    BinaryOperator::LessThan => {
+                        let val = match (&lhs, &rhs) {
+                            (Value::PrimitiveType(PrimitiveType::Float(_)), _)
+                            | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
+                                if lhs.to_float() < rhs.to_float() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            (Value::PrimitiveType(PrimitiveType::Integer(_)), _)
+                            | (_, Value::PrimitiveType(PrimitiveType::Integer(_))) => {
+                                if lhs.to_int() < rhs.to_int() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            _ => 0,
+                        };
+                        Value::from_int(val)
+                    }
+                    BinaryOperator::GreaterThan => {
+                        let val = match (&lhs, &rhs) {
+                            (Value::PrimitiveType(PrimitiveType::Float(_)), _)
+                            | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
+                                if lhs.to_float() > rhs.to_float() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            (Value::PrimitiveType(PrimitiveType::Integer(_)), _)
+                            | (_, Value::PrimitiveType(PrimitiveType::Integer(_))) => {
+                                if lhs.to_int() > rhs.to_int() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            _ => 0,
+                        };
+                        Value::from_int(val)
+                    }
+                    BinaryOperator::LessEqual => {
+                        let val = match (&lhs, &rhs) {
+                            (Value::PrimitiveType(PrimitiveType::Float(_)), _)
+                            | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
+                                if lhs.to_float() <= rhs.to_float() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            (Value::PrimitiveType(PrimitiveType::Integer(_)), _)
+                            | (_, Value::PrimitiveType(PrimitiveType::Integer(_))) => {
+                                if lhs.to_int() <= rhs.to_int() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            _ => 0,
+                        };
+                        Value::from_int(val)
+                    }
+                    BinaryOperator::GreaterEqual => {
+                        let val = match (&lhs, &rhs) {
+                            (Value::PrimitiveType(PrimitiveType::Float(_)), _)
+                            | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
+                                if lhs.to_float() >= rhs.to_float() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            (Value::PrimitiveType(PrimitiveType::Integer(_)), _)
+                            | (_, Value::PrimitiveType(PrimitiveType::Integer(_))) => {
+                                if lhs.to_int() >= rhs.to_int() {
+                                    1
+                                } else {
+                                    0
+                                }
+                            }
+                            _ => 0,
+                        };
+                        Value::from_int(val)
+                    }
+                    BinaryOperator::Match => Value::from_int(
                         if self.match_first(&lhs.to_string(), &rhs.to_regex()).0 > 0 {
                             1
                         } else {
                             0
                         },
-                    )
-                }
-                BinaryOperator::NotMatch => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    Value::from_int(
+                    ),
+                    BinaryOperator::NotMatch => Value::from_int(
                         if self.match_first(&lhs.to_string(), &rhs.to_regex()).0 == 0 {
                             1
                         } else {
                             0
                         },
-                    )
-                }
-                BinaryOperator::Plus => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    match (&lhs, &rhs) {
+                    ),
+                    BinaryOperator::Plus => match (&lhs, &rhs) {
                         (Value::PrimitiveType(PrimitiveType::Float(_)), _)
                         | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
                             Value::from_float(lhs.to_float() + rhs.to_float())
                         }
                         _ => Value::from_int(lhs.to_int() + rhs.to_int()),
-                    }
-                }
-                BinaryOperator::Minus => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    match (&lhs, &rhs) {
+                    },
+                    BinaryOperator::Minus => match (&lhs, &rhs) {
                         (Value::PrimitiveType(PrimitiveType::Float(_)), _)
                         | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
                             Value::from_float(lhs.to_float() - rhs.to_float())
                         }
                         _ => Value::from_int(lhs.to_int() - rhs.to_int()),
-                    }
-                }
-                BinaryOperator::Multiply => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    match (&lhs, &rhs) {
+                    },
+                    BinaryOperator::Multiply => match (&lhs, &rhs) {
                         (Value::PrimitiveType(PrimitiveType::Float(_)), _)
                         | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
                             Value::from_float(lhs.to_float() * rhs.to_float())
                         }
                         _ => Value::from_int(lhs.to_int() * rhs.to_int()),
-                    }
-                }
-                BinaryOperator::Divide => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    Value::from_float(lhs.to_float() / rhs.to_float())
-                }
-                BinaryOperator::Modulo => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    Value::from_int(lhs.to_int() % rhs.to_int())
-                }
-                BinaryOperator::Exponent => {
-                    let lhs = self.evaluate(lhs);
-                    let rhs = self.evaluate(rhs);
-                    match (&lhs, &rhs) {
+                    },
+                    BinaryOperator::Divide => Value::from_float(lhs.to_float() / rhs.to_float()),
+                    BinaryOperator::Modulo => Value::from_int(lhs.to_int() % rhs.to_int()),
+                    BinaryOperator::Exponent => match (&lhs, &rhs) {
                         (
                             Value::PrimitiveType(PrimitiveType::Integer(_)),
                             Value::PrimitiveType(PrimitiveType::Integer(_)),
                         ) => Value::from_int(lhs.to_int().pow(rhs.to_int() as u32)),
                         _ => Value::from_float(lhs.to_float().powf(rhs.to_float())),
+                    },
+                    BinaryOperator::Equal => {
+                        let val = rhs;
+                        match &**lhs_expression {
+                            Expression::Variable(name) => {
+                                self.set_variable(name.to_string(), val.clone());
+                            }
+                            Expression::ArrayVariable(name, expressions) => {
+                                let mut var = match self.get_variable(&name.to_string()) {
+                                    Value::ArrayType(val) => val,
+                                    _ => {
+                                        let val = Value::ArrayType(HashMap::new());
+                                        self.set_variable(name.to_string(), val);
+                                        HashMap::new()
+                                    }
+                                };
+                                let prev_subsep = self.get_variable(&"SUBSEP".to_string());
+                                self.set_variable(
+                                    "SUBSEP".to_string(),
+                                    Value::from_string(",".to_string()),
+                                );
+                                let key = expressions
+                                    .into_iter()
+                                    .map(|e| self.evaluate(&e).to_string())
+                                    .reduce(|mut acc, x| {
+                                        acc.push_str(x.as_str());
+                                        acc.push_str(",");
+                                        acc
+                                    })
+                                    .unwrap();
+                                var.insert(key, val.to_primitive());
+                                self.set_variable(name.to_string(), Value::ArrayType(var));
+                                self.set_variable("SUBSEP".to_string(), prev_subsep);
+                            }
+                            Expression::FieldVariable(expression) => {
+                                let name = self.evaluate(expression);
+                                self.set_variable(name.to_string(), val.clone());
+                            }
+                            _ => panic!(
+                                "expected variable assignment, received: {:?}",
+                                **lhs_expression
+                            ),
+                        }
+                        val
                     }
-                }
-                BinaryOperator::Equal => {
-                    let val = self.evaluate(rhs);
-                    match &**lhs {
-                        Expression::Variable(name) => {
-                            self.set_variable(name.to_string(), val.clone());
-                        }
-                        Expression::ArrayVariable(name, expressions) => {
-                            let mut var = match self.get_variable(&name.to_string()) {
-                                Value::ArrayType(val) => val,
-                                _ => {
-                                    let val = Value::ArrayType(HashMap::new());
-                                    self.set_variable(name.to_string(), val);
-                                    HashMap::new()
-                                }
-                            };
-                            let prev_subsep = self.get_variable(&"SUBSEP".to_string());
-                            self.set_variable(
-                                "SUBSEP".to_string(),
-                                Value::from_string(",".to_string()),
-                            );
-                            let key = expressions
-                                .into_iter()
-                                .map(|e| self.evaluate(&e).to_string())
-                                .reduce(|mut acc, x| {
-                                    acc.push_str(x.as_str());
-                                    acc.push_str(",");
-                                    acc
-                                })
-                                .unwrap();
-                            var.insert(key, val.to_primitive());
-                            self.set_variable(name.to_string(), Value::ArrayType(var));
-                            self.set_variable("SUBSEP".to_string(), prev_subsep);
-                        }
-                        Expression::FieldVariable(_) => {
-                            todo!()
-                        }
-                        _ => panic!("expected variable assignment, received: {:?}", **lhs),
-                    }
-                    val
-                }
-                BinaryOperator::Or => Value::from_int(
-                    if self.evaluate(lhs).is_truthy() || self.evaluate(rhs).is_truthy() {
+                    BinaryOperator::Or => Value::from_int(if lhs.is_truthy() || rhs.is_truthy() {
                         1
                     } else {
                         0
-                    },
-                ),
-                BinaryOperator::And => Value::from_int(
-                    if self.evaluate(lhs).is_truthy() && self.evaluate(rhs).is_truthy() {
+                    }),
+                    BinaryOperator::And => Value::from_int(if lhs.is_truthy() && rhs.is_truthy() {
                         1
                     } else {
                         0
-                    },
-                ),
-                BinaryOperator::In => todo!(),
-                BinaryOperator::Pipe => todo!(),
-                BinaryOperator::Append => todo!(),
-            },
+                    }),
+                    BinaryOperator::In => todo!(),
+                    BinaryOperator::Pipe => todo!(),
+                    BinaryOperator::Append => todo!(),
+                }
+            }
+
             Expression::Ternary(cond, truthy, falsy) => {
                 if self.evaluate(cond).is_truthy() {
                     self.evaluate(truthy)
@@ -663,6 +785,14 @@ impl<'a> Environment<'a> {
         }
     }
 
+    fn add_int(lhs: Value, rhs: i64) -> Value {
+        match lhs {
+            Value::PrimitiveType(PrimitiveType::Integer(v)) => Value::from_int(v + rhs),
+            Value::PrimitiveType(PrimitiveType::Float(v)) => Value::from_float(v + rhs as f64),
+            _ => Value::from_int(rhs),
+        }
+    }
+
     fn default_variables() -> HashMap<String, Value> {
         let mut ret = HashMap::new();
         ret.insert("ARGC".to_string(), Value::from_string("".to_string()));
@@ -719,24 +849,6 @@ impl PartialEq for Value {
             (Self::PrimitiveType(lhs), Self::PrimitiveType(rhs)) => lhs == rhs,
             (Self::ArrayType(lhs), Self::ArrayType(rhs)) => lhs == rhs,
             _ => false,
-        }
-    }
-}
-
-impl Ord for Value {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (Self::PrimitiveType(lhs), Self::PrimitiveType(rhs)) => lhs.cmp(rhs),
-            _ => Ordering::Equal,
-        }
-    }
-}
-
-impl PartialOrd for Value {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self, other) {
-            (Self::PrimitiveType(lhs), Self::PrimitiveType(rhs)) => lhs.partial_cmp(rhs),
-            _ => None,
         }
     }
 }

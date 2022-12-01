@@ -156,6 +156,39 @@ fn expression_pattern() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn unary_expression() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            a[0] = "hello"
+            v = 42
+            print ++a[0], ++v, ++$0
+            print --a[0], --v, --$0
+            print a[0]++, v++, $0++
+            print a[0]--, v--, $0--
+            print a[0], v, $0
+        }
+    "#,
+    )?;
+
+    let in1 = assert_fs::NamedTempFile::new("in1.awk")?;
+    in1.write_str("a\nb")?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+    cmd.assert().success().stdout(predicate::str::contains(
+        r#"1 43 1
+0 42 0
+0 42 0
+1 43 1
+0 42 0"#,
+    ));
+
+    Ok(())
+}
+
+#[test]
 fn arithmetic_expression() -> Result<(), Box<dyn std::error::Error>> {
     let source = assert_fs::NamedTempFile::new("source.awk")?;
     source.write_str(
