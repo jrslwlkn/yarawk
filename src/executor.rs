@@ -89,6 +89,8 @@ impl<'a> Environment<'a> {
         ret
     }
 
+    // TODO: The same name shall not be used within the same scope both
+    //       as a scalar variable and as an array.
     fn set_array_variable(&mut self, name: String, accessors: &Vec<Expression<'a>>, value: Value) {
         let mut variable = match self.get_variable(&name) {
             Value::ArrayType(val) => val,
@@ -652,6 +654,12 @@ impl<'a> Environment<'a> {
                                 self.set_variable(name.to_string(), val.clone());
                             }
                             Expression::ArrayVariable(name, expressions) => {
+                                // TODO: References to nonexistent fields (that is,
+                                //       fields after $NF), shall evaluate to the uninitialized value. Such references shall not create new fields. However, assigning to a nonexis-
+                                //       tent field (for example, $(NF+2)=5) shall increase the value of NF; create any intervening fields with the uninitialized value;	and  cause
+                                //       the value of $0 to be recomputed, with the fields being separated by the value of OFS.  Each field variable shall have a string value or an
+                                //       uninitialized value when created. Field variables shall have the uninitialized value when created from $0 using FS and  the  variable  does
+                                //       not contain any characters.
                                 let mut var = match self.get_variable(&name.to_string()) {
                                     Value::ArrayType(val) => val,
                                     _ => {
@@ -680,6 +688,10 @@ impl<'a> Environment<'a> {
                             }
                             Expression::FieldVariable(expression) => {
                                 let name = self.evaluate(expression);
+                                if name == Value::Empty {
+                                    // TODO
+                                    //
+                                }
                                 self.set_variable(name.to_string(), val.clone());
                             }
                             _ => panic!(
