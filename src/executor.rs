@@ -127,9 +127,9 @@ impl<'a> Environment<'a> {
     pub fn execute_actions(&mut self, record: &str) {
         // parse and set field variables
         self.set_variable("0".to_string(), Value::from_string(record.to_string()));
-        let fs = self.get_variable(&"FS".to_string()).to_string();
+        let fs = self.get_variable(&"FS".to_string()).to_regex();
         let mut i = 1;
-        for val in record.split(&fs) {
+        for val in fs.split(&record) {
             let val = val.trim();
             if !val.is_empty() {
                 self.set_variable(i.to_string(), Value::from_string(val.to_string()));
@@ -141,6 +141,7 @@ impl<'a> Environment<'a> {
             self.variables.remove(&n.to_string());
         }
         self.max_field = i;
+        self.set_variable("NF".to_string(), Value::from_int(i as i64 - 1));
         // execute actions
         let mut range_idx = 0;
         for (expressions, statements) in &self.program.actions {
