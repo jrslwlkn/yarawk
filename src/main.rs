@@ -5,7 +5,7 @@ use crate::token::PrimitiveType;
 use std::collections::HashMap;
 use std::env;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::Read;
 
 pub mod executor;
 pub mod lexer;
@@ -79,11 +79,11 @@ fn main() {
     let prog = parser.parse();
     // println!("{:#?}", prog);
 
-    let mut env = Environment::new(&prog);
+    let mut env = Environment::new(&argv, &prog);
+
     for (name, val) in preset_vars {
         env.set_variable(name.to_string(), Value::from_string(val.to_string()));
     }
-    env.set_variable("ARGC".to_string(), Value::from_int(argv.len() as i64 + 1));
     let mut argv_var = HashMap::<String, PrimitiveType>::new();
     argv_var.insert(
         format!("{}", 0),
@@ -92,43 +92,11 @@ fn main() {
     for (i, val) in argv.iter().enumerate() {
         argv_var.insert(format!("{}", i + 1), PrimitiveType::String(val.to_string()));
     }
+
+    env.set_variable("ARGC".to_string(), Value::from_int(argv.len() as i64 + 1));
     env.set_variable("ARGV".to_string(), Value::from_array(argv_var));
-
     env.execute_begin();
-
-    let mut nr = 0;
-    for filepath in argv {
-        let file =
-            File::open(filepath).expect(format!("unable to open file: {}", filepath).as_str());
-        env.set_variable(
-            "FILENAME".to_string(),
-            Value::from_string(filepath.to_string()),
-        );
-        let mut fnr = 0;
-        let mut reader = BufReader::new(file);
-        loop {
-            let mut record = vec![];
-            match reader.read_until(env.get_rs(), &mut record) {
-                Err(_) => {
-                    panic!("unable to read file: {}", filepath);
-                }
-                Ok(v) if v == 0 => break,
-                Ok(_) => {
-                    nr += 1;
-                    fnr += 1;
-                    env.set_variable("NR".to_string(), Value::from_int(nr));
-                    env.set_variable("FNR".to_string(), Value::from_int(fnr));
-                    record.pop(); // remove record separator at the end
-                    env.execute_actions(
-                        std::str::from_utf8(record.as_slice())
-                            .unwrap_or(format!("unable to read file: {}", filepath).as_str())
-                            .trim(),
-                    );
-                }
-            }
-        }
-    }
-
+    env.execute_actions();
     env.execute_end();
 }
 

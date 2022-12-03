@@ -1,7 +1,10 @@
 use core::panic;
-use std::collections::HashMap;
-
 use regex::Regex;
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufRead, BufReader},
+};
 
 use crate::{
     parser::Program,
@@ -10,6 +13,10 @@ use crate::{
 };
 
 pub struct Environment<'a> {
+    input_filepaths: &'a [&'a str],
+    file_idx: usize,
+    last_record: String,
+    file_reader: Option<BufReader<File>>,
     program: &'a Program<'a>,
     variables: HashMap<String, Value>,
     functions: HashMap<String, (Vec<&'a str>, Vec<Statement<'a>>)>,
@@ -26,8 +33,12 @@ pub enum Value {
 }
 
 impl<'a> Environment<'a> {
-    pub fn new(program: &'a Program<'a>) -> Self {
+    pub fn new(input_filepaths: &'a [&'a str], program: &'a Program<'a>) -> Self {
         let mut ret = Self {
+            input_filepaths,
+            file_idx: 0,
+            last_record: String::from(""),
+            file_reader: None,
             program,
             variables: Self::default_variables(),
             functions: Self::default_functions(),
@@ -45,7 +56,80 @@ impl<'a> Environment<'a> {
         ret
     }
 
-    pub fn get_rs(&self) -> u8 {
+    // returns whether file was opened
+    fn open_next_file(&mut self, idx: usize) -> bool {
+        if idx >= self.input_filepaths.len() {
+            return false;
+        }
+        self.file_idx = idx;
+        let filepath = self.input_filepaths[idx];
+        let file =
+            File::open(filepath).expect(format!("unable to open file: {}", filepath).as_str());
+        self.file_reader = Some(BufReader::new(file));
+        self.set_variable(
+            "FILENAME".to_string(),
+            Value::from_string(filepath.to_string()),
+        );
+        self.set_variable("FNR".to_string(), Value::from_int(0));
+        return true;
+    }
+
+    pub fn next_record(&mut self) -> Option<String> {
+        if self.file_idx >= self.input_filepaths.len()
+            || self.file_reader.is_none() && !self.open_next_file(self.file_idx)
+        {
+            return None;
+        }
+
+        let rs = self.get_rs();
+        let mut record = vec![];
+        match self
+            .file_reader
+            .as_mut()
+            .unwrap()
+            .read_until(rs, &mut record)
+        {
+            Err(_) => {
+                panic!(
+                    "unable to read file: {}",
+                    self.input_filepaths[self.file_idx]
+                );
+            }
+            Ok(v) => {
+                if v == 0 && !self.open_next_file(self.file_idx + 1) {
+                    return None;
+                }
+                if v == 0 {
+                    // new file just got opened, rerun the function
+                    return self.next_record();
+                }
+                // TODO: keep track of NR and FNR
+                //       because user can reset those
+                self.set_variable(
+                    "NR".to_string(),
+                    Self::add_int(self.get_variable(&"NR".to_string()), 1),
+                );
+                self.set_variable(
+                    "FNR".to_string(),
+                    Self::add_int(self.get_variable(&"FNR".to_string()), 1),
+                );
+                record.pop(); // remove record separator at the end
+                let ret = std::str::from_utf8(record.as_slice())
+                    .unwrap_or(
+                        format!(
+                            "unable to read file: {}",
+                            self.input_filepaths[self.file_idx]
+                        )
+                        .trim(),
+                    )
+                    .to_string();
+                self.last_record = ret.clone();
+                return Some(ret);
+            }
+        }
+    }
+
+    fn get_rs(&self) -> u8 {
         *self
             .get_variable(&"RS".to_string())
             .to_string()
@@ -124,95 +208,102 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn execute_actions(&mut self, record: &str) {
-        // parse and set field variables
-        self.set_variable("0".to_string(), Value::from_string(record.to_string()));
-        let fs = self.get_variable(&"FS".to_string()).to_regex();
-        let mut i = 1;
-        for val in fs.split(&record) {
-            let val = val.trim();
-            if !val.is_empty() {
-                self.set_variable(i.to_string(), Value::from_string(val.to_string()));
-                i += 1;
+    pub fn execute_actions(&mut self) {
+        loop {
+            let record = self.next_record();
+            if record.is_none() {
+                break;
             }
-        }
-        for n in i..=self.max_field {
-            // remove fields from the previous record
-            self.variables.remove(&n.to_string());
-        }
-        self.max_field = i;
-        self.set_variable("NF".to_string(), Value::from_int(i as i64 - 1));
-        // execute actions
-        let mut range_idx = 0;
-        for (expressions, statements) in &self.program.actions {
-            match expressions.len() {
-                0 => {
-                    self.execute_in_action(statements);
+            let record = record.unwrap();
+            // parse and set field variables
+            self.set_variable("0".to_string(), Value::from_string(record.clone()));
+            let fs = self.get_variable(&"FS".to_string()).to_regex();
+            let mut i = 1;
+            for val in fs.split(&record) {
+                let val = val.trim();
+                if !val.is_empty() {
+                    self.set_variable(i.to_string(), Value::from_string(val.to_string()));
+                    i += 1;
                 }
-                1 => match self.evaluate(expressions.get(0).unwrap()) {
-                    Value::Empty => {
+            }
+            for n in i..=self.max_field {
+                // remove fields from the previous record
+                self.variables.remove(&n.to_string());
+            }
+            self.max_field = i;
+            self.set_variable("NF".to_string(), Value::from_int(i as i64 - 1));
+            // execute actions
+            let mut range_idx = 0;
+            for (expressions, statements) in &self.program.actions {
+                match expressions.len() {
+                    0 => {
                         self.execute_in_action(statements);
                     }
-                    Value::PrimitiveType(PrimitiveType::Pattern(re)) => {
-                        if re.is_match(record) {
+                    1 => match self.evaluate(expressions.get(0).unwrap()) {
+                        Value::Empty => {
                             self.execute_in_action(statements);
                         }
-                    }
-                    val => {
-                        if val.is_truthy() {
-                            self.execute_in_action(statements);
-                        }
-                    }
-                },
-                2 => {
-                    if self.ranges_flags.is_empty() || self.ranges_flags.len() - 1 < range_idx {
-                        // init
-                        self.ranges_flags.push(false);
-                    }
-                    if self.ranges_flags[range_idx] {
-                        // we're in running range, test if should stop
-                        match self.evaluate(expressions.get(1).unwrap()) {
-                            Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
-                                if self.match_first(record, &p).0 > 0 {
-                                    self.ranges_flags[range_idx] = false;
-                                    self.execute_in_action(statements);
-                                }
-                            }
-                            val => {
-                                if val.is_truthy() {
-                                    self.execute_in_action(statements);
-                                }
+                        Value::PrimitiveType(PrimitiveType::Pattern(re)) => {
+                            if re.is_match(record.as_str()) {
+                                self.execute_in_action(statements);
                             }
                         }
-                    } else {
-                        // we're not in running range, test if should start
-                        let mut cur_record = record;
-                        match self.evaluate(expressions.get(0).unwrap()) {
-                            Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
-                                let (match_start, match_len) = self.match_first(cur_record, &p);
-                                if match_start > 0 {
-                                    cur_record = &cur_record[(match_start + match_len - 1)..];
-                                    self.ranges_flags[range_idx] = true;
-                                    self.execute_in_action(statements);
-                                    if self.match_first(cur_record, &p).0 > 0 {
-                                        // range ends within record
+                        val => {
+                            if val.is_truthy() {
+                                self.execute_in_action(statements);
+                            }
+                        }
+                    },
+                    2 => {
+                        if self.ranges_flags.is_empty() || self.ranges_flags.len() - 1 < range_idx {
+                            // init
+                            self.ranges_flags.push(false);
+                        }
+                        if self.ranges_flags[range_idx] {
+                            // we're in running range, test if should stop
+                            match self.evaluate(expressions.get(1).unwrap()) {
+                                Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
+                                    if self.match_first(record.as_str(), &p).0 > 0 {
                                         self.ranges_flags[range_idx] = false;
+                                        self.execute_in_action(statements);
+                                    }
+                                }
+                                val => {
+                                    if val.is_truthy() {
+                                        self.execute_in_action(statements);
                                     }
                                 }
                             }
-                            val => {
-                                if val.is_truthy() {
-                                    self.execute_in_action(statements);
+                        } else {
+                            // we're not in running range, test if should start
+                            let mut cur_record = record.as_str();
+                            match self.evaluate(expressions.get(0).unwrap()) {
+                                Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
+                                    let (match_start, match_len) = self.match_first(cur_record, &p);
+                                    if match_start > 0 {
+                                        cur_record = &cur_record[(match_start + match_len - 1)..];
+                                        self.ranges_flags[range_idx] = true;
+                                        self.execute_in_action(statements);
+                                        if self.match_first(cur_record, &p).0 > 0 {
+                                            // range ends within record
+                                            self.ranges_flags[range_idx] = false;
+                                        }
+                                    }
+                                }
+                                val => {
+                                    if val.is_truthy() {
+                                        self.execute_in_action(statements);
+                                    }
                                 }
                             }
                         }
+                        range_idx += 1;
                     }
-                    range_idx += 1;
+                    _ => panic!(
+                        "expected: expression or range expression(2), received {} expressions",
+                        expressions.len()
+                    ),
                 }
-                _ => panic!(
-                    "expected: expression or range expression(2), received {} expressions",
-                    expressions.len()
-                ),
             }
         }
     }
@@ -379,6 +470,7 @@ impl<'a> Environment<'a> {
                 };
                 Value::Empty
             }
+            Statement::Delete(e) => todo!(),
             _ => panic!("unexpected statement: {:?}", statement),
         }
     }
@@ -788,7 +880,7 @@ impl<'a> Environment<'a> {
             "CONVFMT".to_string(),
             Value::from_string("%.6g".to_string()),
         );
-        ret.insert("FILENAME".to_string(), Value::from_string("".to_string()));
+        ret.insert("FILENAME".to_string(), Value::Empty);
         ret.insert("FNR".to_string(), Value::from_int(0));
         ret.insert("FS".to_string(), Value::from_string(" ".to_string()));
         ret.insert("NF".to_string(), Value::from_int(0));
