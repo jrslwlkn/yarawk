@@ -264,3 +264,47 @@ fn array_variable() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn getline() -> Result<(), Box<dyn std::error::Error>> {
+    let in2 = assert_fs::NamedTempFile::new("in2.txt")?;
+    in2.write_str("hello world ")?;
+
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(&format!(
+        r#"
+        BEGIN {{
+            a = "hello"
+            print a, NR
+
+            getline
+            print NR
+
+            getline a < "{}"
+            print a, NR, FNR
+            print NR, FNR
+
+            getline a
+            print a, NR, FNR
+            getline a
+            print a, NR, FNR
+        }}
+
+        END {{
+            print NR
+        }}
+    "#,
+        in2.path().to_str().unwrap()
+    ))?;
+
+    let in1 = assert_fs::NamedTempFile::new("in1.txt")?;
+    in1.write_str("line 1 \nline 2 ")?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+    cmd.assert().success().stdout(predicate::str::contains(
+        "hello 0\n1\nhello world 1 1\n1 1\nline 2 2 2\nline 2 2 2\n2",
+    ));
+
+    Ok(())
+}
