@@ -289,7 +289,6 @@ fn getline() -> Result<(), Box<dyn std::error::Error>> {
             getline a
             print a, NR, FNR
         }}
-
         END {{
             print NR
         }}
@@ -305,6 +304,57 @@ fn getline() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().success().stdout(predicate::str::contains(
         "hello 0\n1\nhello world 1 1\n1 1\nline 2 2 2\nline 2 2 2\n2",
     ));
+
+    Ok(())
+}
+
+#[test]
+fn getline_file_does_not_exit() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            getline x < "doesnotexst"
+            print "x=",x
+        }
+        END {
+            print NR
+        }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("x= \n0"));
+
+    Ok(())
+}
+
+#[test]
+fn getline_pipe() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            c = "ls " "-a"
+            c | getline a
+            print a, NR
+            "ls -a" | getline a
+        }
+        
+        END {
+            print NR
+        }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains(". 0\n0"));
 
     Ok(())
 }

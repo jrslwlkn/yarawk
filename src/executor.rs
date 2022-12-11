@@ -3,7 +3,8 @@ use regex::Regex;
 use std::{
     collections::HashMap,
     fs::File,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Cursor, Write},
+    process::Command,
 };
 
 use crate::{
@@ -24,7 +25,7 @@ pub struct Environment<'a> {
     ranges_flags: Vec<bool>, // if true for a given idx, then we're currently in this running range
     local_scope: HashMap<String, Value>,
     read_streams: HashMap<String, ReadStream>,
-    write_streams: HashMap<String, (Box<dyn Write>, String)>,
+    write_streams: HashMap<String, (Box<dyn Write>, String)>, // TODO: pipes are read streams; > and >> are write streams
 }
 
 pub struct ReadStream {
@@ -34,8 +35,15 @@ pub struct ReadStream {
 
 impl ReadStream {
     pub fn new(filepath: &String) -> Self {
-        let file =
-            File::open(filepath).expect(format!("unable to open file: {}", filepath).as_str());
+        let file = match File::open(filepath) {
+            Ok(f) => f,
+            Err(_) => {
+                return Self {
+                    reader: Box::new(Cursor::new("".to_string())),
+                    last_record: String::from(""),
+                }
+            }
+        };
         Self {
             reader: Box::new(BufReader::new(file)),
             last_record: String::from(""),
@@ -141,7 +149,7 @@ impl<'a> Environment<'a> {
 
     fn next_stream_record(&mut self, stream_name: &String) -> String {
         let rs = self.get_rs();
-        if self.read_streams.get(stream_name).is_none() {
+        if !self.read_streams.contains_key(stream_name) {
             self.read_streams
                 .insert(stream_name.clone(), ReadStream::new(stream_name));
         };
@@ -150,7 +158,7 @@ impl<'a> Environment<'a> {
         match stream.reader.as_mut().read_until(rs, &mut record) {
             Err(_) => {
                 panic!(
-                    "unable to read file: {}",
+                    "unable to read stream: {}",
                     self.input_filepaths[self.file_idx]
                 );
             }
@@ -666,7 +674,10 @@ impl<'a> Environment<'a> {
             },
             Expression::Binary(op, lhs_expression, rhs_expression) => {
                 let lhs = self.evaluate(lhs_expression);
-                let rhs = self.evaluate(rhs_expression);
+                let rhs = match **rhs_expression {
+                    Expression::Getline(_) => Value::Empty,
+                    _ => self.evaluate(rhs_expression),
+                };
                 match op {
                     BinaryOperator::Concat => {
                         let val = format!("{}{}", lhs.to_string(), rhs.to_string());
@@ -871,11 +882,52 @@ impl<'a> Environment<'a> {
                         0
                     }),
                     BinaryOperator::In => todo!(),
-                    BinaryOperator::Pipe => todo!(),
+                    BinaryOperator::Pipe => {
+                        match (&**lhs_expression, &**rhs_expression) {
+                            (Expression::Function("print", _), _) => todo!(),
+                            (Expression::Function("printf", _), _) => todo!(),
+                            (_, Expression::Getline(e)) => match &**e {
+                                Expression::Empty => {
+                                    let cmd_def = &lhs.to_string();
+                                    if !self.add_command_read_stream_if_absent(&cmd_def) {
+                                        return Value::Empty;
+                                    }
+                                    let record = self.next_stream_record(cmd_def);
+                                    self.execute_getline(
+                                        "0".to_string(),
+                                        record.as_str(),
+                                        true,
+                                        false,
+                                        false,
+                                    );
+                                }
+                                Expression::Variable(v) => {
+                                    let cmd_def = &lhs.to_string();
+                                    if !self.add_command_read_stream_if_absent(&cmd_def) {
+                                        return Value::Empty;
+                                    }
+                                    let record = self.next_stream_record(cmd_def);
+                                    self.execute_getline(
+                                        v.to_string(),
+                                        record.as_str(),
+                                        true,
+                                        false,
+                                        false,
+                                    );
+                                }
+                                e => panic!("unexpected expression in pipe/getline: {:?}", e),
+                            },
+                            _ => todo!(),
+                        };
+                        Value::Empty
+                    }
                     BinaryOperator::Append => todo!(),
                 }
             }
             Expression::Getline(e) => {
+                // FIXME: it returns 1 if there was a record present,
+                //                   0 if end-of-file was encountered,
+                //              and -1 if some error occurred (such as failure to open a file).
                 let mut should_inc_counters = true;
                 match &**e {
                     Expression::Empty => {
@@ -969,6 +1021,71 @@ impl<'a> Environment<'a> {
         }
     }
 
+    fn add_command_read_stream_if_absent(&mut self, cmd_def: &str) -> bool {
+        if !self.read_streams.contains_key(cmd_def) {
+            let (cmd_name, args) = Self::get_command_args(cmd_def);
+            let output = match Command::new(&cmd_name).args(args).output() {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("failed to execute `{}`, {}", &cmd_name, e);
+                    return false;
+                }
+            };
+            let output = std::str::from_utf8(&output.stdout).unwrap();
+            self.read_streams.insert(
+                cmd_def.to_string(),
+                ReadStream {
+                    reader: Box::new(BufReader::new(Cursor::new(output.to_string()))),
+                    last_record: String::from(""),
+                },
+            );
+        }
+        true
+    }
+
+    fn get_command_args(cmd: &str) -> (String, Vec<String>) {
+        let mut tokens = vec![];
+        let mut span_start = 0;
+        let mut i = 0;
+        let mut quote: Option<char> = None;
+        while cmd.chars().nth(i).is_some() {
+            match cmd.chars().nth(i).unwrap() {
+                c if c.is_whitespace() => {
+                    if span_start < i {
+                        tokens.push(cmd[span_start..i].to_string());
+                    }
+                    span_start = i + 1;
+                }
+                c if (c == '"' || c == '\'') && quote.is_some() && quote.unwrap() == c => {
+                    tokens.push(cmd[span_start..i].to_string());
+                    span_start = i + 1;
+                    quote = None;
+                }
+                c if (c == '\"' || c == '\'') && quote.is_none() => {
+                    if span_start < i {
+                        tokens.push(cmd[span_start..i].to_string());
+                    }
+                    span_start = i;
+                    quote = Some(c);
+                }
+                c if c == '\\' => {
+                    // this is an escape, so ignore next char
+                    i += 1;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        if span_start < i {
+            tokens.push(cmd[span_start..i].to_string());
+        }
+
+        (
+            tokens.first().expect("command string is empty").to_string(),
+            tokens[1..].to_owned(),
+        )
+    }
+
     fn match_first(&mut self, lhs: &str, rhs: &Regex) -> (usize, usize) {
         // ([idx where match started, 1-based], [match length])
         let mut captures = rhs.captures_iter(lhs);
@@ -998,8 +1115,8 @@ impl<'a> Environment<'a> {
 
     fn default_variables() -> HashMap<String, Value> {
         let mut ret = HashMap::new();
-        ret.insert("ARGC".to_string(), Value::from_string("".to_string()));
-        ret.insert("ARGV".to_string(), Value::from_int(0));
+        ret.insert("ARGC".to_string(), Value::from_int(0));
+        ret.insert("ARGV".to_string(), Value::Empty);
         ret.insert(
             "CONVFMT".to_string(),
             Value::from_string("%.6g".to_string()),
