@@ -309,6 +309,41 @@ fn getline() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn getline_result() -> Result<(), Box<dyn std::error::Error>> {
+    let in2 = assert_fs::NamedTempFile::new("in2.txt")?;
+    in2.write_str("hello world ")?;
+
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(&format!(
+        r#"
+        BEGIN {{
+            x = getline x < "doesnotexist"
+            print x
+
+            x = getline x < "{}"
+            print x
+
+            x = getline x < "{}"
+            print x
+        }}
+        END {{
+            print NR
+        }}
+    "#,
+        in2.path().to_str().unwrap(),
+        in2.path().to_str().unwrap(),
+    ))?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("-1\n1\n0\n0"));
+
+    Ok(())
+}
+
+#[test]
 fn getline_file_does_not_exit() -> Result<(), Box<dyn std::error::Error>> {
     let source = assert_fs::NamedTempFile::new("source.awk")?;
     source.write_str(

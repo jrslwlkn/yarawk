@@ -25,7 +25,7 @@ pub struct Environment<'a> {
     ranges_flags: Vec<bool>, // if true for a given idx, then we're currently in this running range
     local_scope: HashMap<String, Value>,
     read_streams: HashMap<String, ReadStream>,
-    write_streams: HashMap<String, (Box<dyn Write>, String)>, // TODO: pipes are read streams; > and >> are write streams
+    write_streams: HashMap<String, (Box<dyn Write>, String)>,
 }
 
 pub struct ReadStream {
@@ -34,20 +34,26 @@ pub struct ReadStream {
 }
 
 impl ReadStream {
-    pub fn new(filepath: &String) -> Self {
+    pub fn new(filepath: &String) -> (Self, bool) {
         let file = match File::open(filepath) {
             Ok(f) => f,
             Err(_) => {
-                return Self {
-                    reader: Box::new(Cursor::new("".to_string())),
-                    last_record: String::from(""),
-                }
+                return (
+                    Self {
+                        reader: Box::new(Cursor::new("".to_string())),
+                        last_record: String::from(""),
+                    },
+                    false,
+                )
             }
         };
-        Self {
-            reader: Box::new(BufReader::new(file)),
-            last_record: String::from(""),
-        }
+        (
+            Self {
+                reader: Box::new(BufReader::new(file)),
+                last_record: String::from(""),
+            },
+            true,
+        )
     }
 }
 
@@ -147,11 +153,14 @@ impl<'a> Environment<'a> {
         }
     }
 
-    fn next_stream_record(&mut self, stream_name: &String) -> String {
+    fn next_stream_record(&mut self, stream_name: &String) -> (String, bool) {
         let rs = self.get_rs();
         if !self.read_streams.contains_key(stream_name) {
-            self.read_streams
-                .insert(stream_name.clone(), ReadStream::new(stream_name));
+            let (s, exists) = ReadStream::new(stream_name);
+            if !exists {
+                return ("".to_string(), false);
+            }
+            self.read_streams.insert(stream_name.clone(), s);
         };
         let stream: &mut ReadStream = &mut self.read_streams.get_mut(stream_name).unwrap();
         let mut record = vec![];
@@ -164,13 +173,13 @@ impl<'a> Environment<'a> {
             }
             Ok(v) => {
                 if v == 0 {
-                    return stream.last_record.to_string();
+                    return (stream.last_record.to_string(), false);
                 }
                 record.pop(); // remove record separator at the end
                 let ret = std::str::from_utf8(record.as_slice())
                     .unwrap_or(format!("unable to read file: {}", stream_name).trim())
                     .to_string();
-                return ret;
+                return (ret, true);
             }
         }
     }
@@ -675,7 +684,7 @@ impl<'a> Environment<'a> {
             Expression::Binary(op, lhs_expression, rhs_expression) => {
                 let lhs = self.evaluate(lhs_expression);
                 let rhs = match **rhs_expression {
-                    Expression::Getline(_) => Value::Empty,
+                    Expression::Getline(_) if op == &BinaryOperator::Pipe => Value::Empty,
                     _ => self.evaluate(rhs_expression),
                 };
                 match op {
@@ -892,7 +901,7 @@ impl<'a> Environment<'a> {
                                     if !self.add_command_read_stream_if_absent(&cmd_def) {
                                         return Value::Empty;
                                     }
-                                    let record = self.next_stream_record(cmd_def);
+                                    let (record, _) = self.next_stream_record(cmd_def);
                                     self.execute_getline(
                                         "0".to_string(),
                                         record.as_str(),
@@ -906,7 +915,7 @@ impl<'a> Environment<'a> {
                                     if !self.add_command_read_stream_if_absent(&cmd_def) {
                                         return Value::Empty;
                                     }
-                                    let record = self.next_stream_record(cmd_def);
+                                    let (record, _) = self.next_stream_record(cmd_def);
                                     self.execute_getline(
                                         v.to_string(),
                                         record.as_str(),
@@ -925,9 +934,10 @@ impl<'a> Environment<'a> {
                 }
             }
             Expression::Getline(e) => {
-                // FIXME: it returns 1 if there was a record present,
-                //                   0 if end-of-file was encountered,
-                //              and -1 if some error occurred (such as failure to open a file).
+                // it returns 1 if there was a record present,
+                //            0 if end-of-file was encountered,
+                //       and -1 if some error occurred (such as failure to open a file).
+                let mut return_value = 0;
                 let mut should_inc_counters = true;
                 match &**e {
                     Expression::Empty => {
@@ -936,7 +946,10 @@ impl<'a> Environment<'a> {
                                 should_inc_counters = false;
                                 self.last_record.clone()
                             }
-                            Some(r) => r,
+                            Some(r) => {
+                                return_value = 1;
+                                r
+                            }
                         };
                         self.execute_getline(
                             "0".to_string(),
@@ -952,7 +965,10 @@ impl<'a> Environment<'a> {
                                 should_inc_counters = false;
                                 self.last_record.clone()
                             }
-                            Some(r) => r,
+                            Some(r) => {
+                                return_value = 1;
+                                r
+                            }
                         };
                         self.execute_getline(
                             v.to_string(),
@@ -966,26 +982,33 @@ impl<'a> Environment<'a> {
                         let filepath = self.evaluate(rhs).to_string();
                         match **lhs {
                             Expression::Empty => {
-                                let record = self.next_record().unwrap_or(
-                                    self.read_streams
-                                        .get(&filepath)
-                                        .unwrap()
-                                        .last_record
-                                        .clone(),
-                                );
-                                self.execute_getline("0".to_string(), &record, true, false, false)
+                                let (record, has_more) = self.next_stream_record(&filepath);
+                                if self.read_streams.get(&filepath).is_some() {
+                                    if has_more {
+                                        return_value = 1;
+                                    }
+                                } else {
+                                    return_value = -1;
+                                };
+                                self.execute_getline("0".to_string(), &record, true, false, false);
                             }
                             Expression::Variable(v) => {
-                                let stream_name = self.evaluate(rhs).to_string();
-                                let record = self.next_stream_record(&stream_name);
-                                self.execute_getline(v.to_string(), &record, false, false, false)
+                                let (record, has_more) = self.next_stream_record(&filepath);
+                                if self.read_streams.get(&filepath).is_some() {
+                                    if has_more {
+                                        return_value = 1;
+                                    }
+                                } else {
+                                    return_value = -1;
+                                };
+                                self.execute_getline(v.to_string(), &record, false, false, false);
                             }
                             _ => panic!("unexpected expression: {:?}", **lhs),
-                        }
+                        };
                     }
                     _ => panic!("unexpected expression: {:?}", **e),
                 };
-                Value::Empty
+                Value::from_int(return_value)
             }
             Expression::Ternary(cond, truthy, falsy) => {
                 if self.evaluate(cond).is_truthy() {
