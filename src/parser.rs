@@ -180,6 +180,14 @@ impl<'a> Parser<'a> {
                                 Box::new(Expression::Empty),
                                 Box::new(self.expression(ExpressionTrace::new())),
                             ));
+                        } else if is_first && self.check_one(TokenType::RightRight) {
+                            // this is an io operation like "print >> filename"
+                            self.skip_by(1);
+                            args.push(Expression::Binary(
+                                BinaryOperator::Append,
+                                Box::new(Expression::Empty),
+                                Box::new(self.expression(ExpressionTrace::new())),
+                            ));
                         } else {
                             // cases like "print string > filename"
                             // and normal expressions
