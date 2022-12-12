@@ -180,6 +180,8 @@ impl<'a> Lexer<'a> {
                             }
                             Some(t) => match t.value {
                                 TokenType::LeftParen
+                                | TokenType::RightCurly
+                                | TokenType::Newline
                                 | TokenType::Comma
                                 | TokenType::Equal
                                 | TokenType::EqualEqual
@@ -235,6 +237,7 @@ impl<'a> Lexer<'a> {
                     match self.tokens.last() {
                         Some(t) => match t.value {
                             TokenType::Semicolon
+                            | TokenType::Newline
                             | TokenType::Comma
                             | TokenType::LeftCurly
                             | TokenType::Question
