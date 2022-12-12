@@ -3,8 +3,8 @@ use regex::Regex;
 use std::{
     collections::HashMap,
     fs::File,
-    io::{BufRead, BufReader, Cursor, Write},
-    process::Command,
+    io::{BufRead, BufReader, BufWriter, Cursor, Write},
+    process::{Command, Stdio},
 };
 
 use crate::{
@@ -25,7 +25,7 @@ pub struct Environment<'a> {
     ranges_flags: Vec<bool>, // if true for a given idx, then we're currently in this running range
     local_scope: HashMap<String, Value>,
     read_streams: HashMap<String, ReadStream>,
-    write_streams: HashMap<String, (Box<dyn Write>, String)>,
+    write_streams: HashMap<String, WriteStream>,
 }
 
 pub struct ReadStream {
@@ -33,28 +33,11 @@ pub struct ReadStream {
     last_record: String,
 }
 
-impl ReadStream {
-    pub fn new(filepath: &String) -> (Self, bool) {
-        let file = match File::open(filepath) {
-            Ok(f) => f,
-            Err(_) => {
-                return (
-                    Self {
-                        reader: Box::new(Cursor::new("".to_string())),
-                        last_record: String::from(""),
-                    },
-                    false,
-                )
-            }
-        };
-        (
-            Self {
-                reader: Box::new(BufReader::new(file)),
-                last_record: String::from(""),
-            },
-            true,
-        )
-    }
+pub struct WriteStream {
+    filepath: String,
+    command: String,
+    input: String,
+    truncate: bool,
 }
 
 #[derive(Clone, Eq, Debug)]
@@ -260,6 +243,9 @@ impl<'a> Environment<'a> {
     pub fn execute_end(&mut self) {
         for s in &self.program.end {
             self.execute_one(s);
+        }
+        for (_, s) in self.write_streams.iter_mut() {
+            s.close();
         }
     }
 
@@ -519,36 +505,33 @@ impl<'a> Environment<'a> {
                 Value::Empty
             }
             Statement::Print(expressions) => {
-                let record = self.get_variable(&"0".to_string()).to_string();
-                let ors = self.get_variable(&"ORS".to_string()).to_string();
-                let ofs = self.get_variable(&"OFS".to_string()).to_string();
                 match expressions.len() {
-                    // {
-                    // print
-                    //
-                    // print > "filename"
-                    //  }
                     0 => {
-                        print!("{}{}", record, ors);
+                        print!("{}", self.get_inner_print_string(&Expression::Empty));
                     }
                     1 => match expressions.get(0).unwrap() {
-                        Expression::Binary(BinaryOperator::GreaterThan, lhs, rhs) => todo!(),
-                        Expression::Binary(BinaryOperator::Append, lhs, rhs) => todo!(),
-                        Expression::Binary(BinaryOperator::Pipe, lhs, rhs) => todo!(),
-                        e => print!("{}{}", self.evaluate(e).to_string(), ors),
+                        Expression::Binary(BinaryOperator::GreaterThan, lhs, rhs) => {
+                            let record = &self.get_inner_print_string(lhs);
+                            let filename = &self.evaluate(rhs).to_string();
+                            self.add_write_stream_if_absent(filename, true, true)
+                                .write(record);
+                        }
+                        Expression::Binary(BinaryOperator::Append, lhs, rhs) => {
+                            let record = &self.get_inner_print_string(lhs);
+                            let filename = &self.evaluate(rhs).to_string();
+                            self.add_write_stream_if_absent(filename, true, false)
+                                .write(record);
+                        }
+                        Expression::Binary(BinaryOperator::Pipe, lhs, rhs) => {
+                            let record = &self.get_inner_print_string(lhs);
+                            let command = &self.evaluate(rhs).to_string();
+                            self.add_write_stream_if_absent(command, false, false)
+                                .pipe(record);
+                        }
+                        e => print!("{}", self.get_inner_print_string(e)),
                     },
                     _ => {
-                        let mut out = "".to_string();
-                        let mut need_sep = false;
-                        for e in expressions {
-                            if need_sep {
-                                out.push_str(&ofs);
-                            }
-                            need_sep = true;
-                            out.push_str(&self.evaluate(e).to_string());
-                        }
-                        out.push_str(&ors);
-                        print!("{}", out);
+                        print!("{}", self.get_print_string(expressions));
                     }
                 };
                 Value::Empty
@@ -556,6 +539,32 @@ impl<'a> Environment<'a> {
             Statement::Delete(e) => todo!(),
             _ => panic!("unexpected statement: {:?}", statement),
         }
+    }
+
+    fn get_inner_print_string(&mut self, expression: &Expression<'a>) -> String {
+        match expression {
+            Expression::Empty => {
+                self.get_variable("0").to_string() + self.get_variable("ORS").to_string().as_str()
+            }
+            Expression::Grouping(expressions) => self.get_print_string(&expressions),
+            e => self.get_print_string(&vec![e.clone()]),
+        }
+    }
+
+    fn get_print_string(&mut self, expressions: &Vec<Expression<'a>>) -> String {
+        let ors = self.get_variable("ORS").to_string();
+        let ofs = self.get_variable("OFS").to_string();
+        let mut ret = String::from("");
+        let mut need_sep = false;
+        for e in expressions {
+            if need_sep {
+                ret.push_str(&ofs);
+            }
+            need_sep = true;
+            ret.push_str(&self.evaluate(e).to_string());
+        }
+        ret.push_str(&ors);
+        ret
     }
 
     fn evaluate(&mut self, expression: &Expression<'a>) -> Value {
@@ -1044,6 +1053,21 @@ impl<'a> Environment<'a> {
         }
     }
 
+    fn add_write_stream_if_absent(
+        &mut self,
+        def: &str,
+        is_file: bool,
+        truncate: bool,
+    ) -> &mut WriteStream {
+        if !self.write_streams.contains_key(def) {
+            self.write_streams.insert(
+                def.to_string(),
+                WriteStream::new(def.to_string(), is_file, truncate),
+            );
+        }
+        self.write_streams.get_mut(def).unwrap()
+    }
+
     fn add_command_read_stream_if_absent(&mut self, cmd_def: &str) -> bool {
         if !self.read_streams.contains_key(cmd_def) {
             let (cmd_name, args) = Self::get_command_args(cmd_def);
@@ -1066,7 +1090,7 @@ impl<'a> Environment<'a> {
         true
     }
 
-    fn get_command_args(cmd: &str) -> (String, Vec<String>) {
+    pub fn get_command_args(cmd: &str) -> (String, Vec<String>) {
         let mut tokens = vec![];
         let mut span_start = 0;
         let mut i = 0;
@@ -1121,7 +1145,7 @@ impl<'a> Environment<'a> {
         }
     }
 
-    fn get_variable(&self, name: &String) -> Value {
+    fn get_variable(&self, name: &str) -> Value {
         match self.local_scope.get(name) {
             None => self.variables.get(name).unwrap_or(&Value::Empty).clone(),
             Some(val) => val.clone(),
@@ -1296,6 +1320,92 @@ impl Value {
         match &self {
             Self::PrimitiveType(val) => val.clone(),
             _ => PrimitiveType::String("".to_string()),
+        }
+    }
+}
+
+impl ReadStream {
+    pub fn new(filepath: &String) -> (Self, bool) {
+        let file = match File::open(filepath) {
+            Ok(f) => f,
+            Err(_) => {
+                return (
+                    Self {
+                        reader: Box::new(Cursor::new("".to_string())),
+                        last_record: String::from(""),
+                    },
+                    false,
+                )
+            }
+        };
+        (
+            Self {
+                reader: Box::new(BufReader::new(file)),
+                last_record: String::from(""),
+            },
+            true,
+        )
+    }
+}
+
+impl WriteStream {
+    pub fn new(def: String, is_file: bool, truncate: bool) -> Self {
+        if is_file {
+            Self {
+                filepath: String::from(def),
+                command: String::from(""),
+                input: String::from(""),
+                truncate,
+            }
+        } else {
+            Self {
+                filepath: String::from(""),
+                command: String::from(def),
+                input: String::from(""),
+                truncate,
+            }
+        }
+    }
+
+    pub fn write(&mut self, s: &str) {
+        if !self.filepath.is_empty() {
+            self.input.push_str(s);
+        }
+    }
+
+    pub fn pipe(&mut self, s: &str) {
+        if !self.command.is_empty() {
+            self.input.push_str(s);
+        }
+    }
+
+    pub fn close(&mut self) {
+        // commands are executed on close
+        if !self.command.is_empty() {
+            let (cmd_name, args) = Environment::get_command_args(&self.command);
+            let mut cmd = Command::new(cmd_name)
+                .args(args)
+                .stdin(Stdio::piped())
+                .spawn()
+                .unwrap();
+            cmd.stdin
+                .as_mut()
+                .unwrap()
+                .write_all(self.input.as_bytes())
+                .unwrap();
+        }
+        if !self.filepath.is_empty() {
+            let file = File::options()
+                .create(true)
+                .write(true)
+                .truncate(self.truncate)
+                .append(!self.truncate)
+                .open(&self.filepath)
+                .unwrap();
+            let mut writer = BufWriter::new(file);
+            writer.write_all(self.input.as_bytes()).unwrap();
+            writer.flush().unwrap();
+            self.input = String::from("");
         }
     }
 }

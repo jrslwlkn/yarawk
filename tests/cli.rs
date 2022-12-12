@@ -1,7 +1,7 @@
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;
 use predicates::prelude::*;
-use std::process::Command;
+use std::{fs, process::Command};
 
 #[test]
 fn hello_world() -> Result<(), Box<dyn std::error::Error>> {
@@ -390,6 +390,107 @@ fn getline_pipe() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains(". 0\n0"));
+
+    Ok(())
+}
+
+#[test]
+fn print_append() -> Result<(), Box<dyn std::error::Error>> {
+    let in2 = assert_fs::NamedTempFile::new("in2.txt")?;
+    in2.write_str("hello world\n")?;
+
+    match fs::remove_file("test_newfile.txt") {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(&format!(
+        r#"
+        {{
+             print NR >> "{}"
+             print >> "test_newfile.txt"
+        }}
+    "#,
+        in2.path().to_str().unwrap(),
+    ))?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    let in1 = assert_fs::NamedTempFile::new("in1.txt")?;
+    in1.write_str("line 1\nline 2\n")?;
+
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+
+    cmd.assert().success();
+
+    in2.assert("hello world\n1\n2\n");
+
+    assert_eq!(
+        fs::read_to_string("test_newfile.txt")?,
+        "line 1\nline 2\n".to_string()
+    );
+    fs::remove_file("test_newfile.txt")?;
+
+    Ok(())
+}
+
+#[test]
+fn print_write() -> Result<(), Box<dyn std::error::Error>> {
+    let in2 = assert_fs::NamedTempFile::new("in2.txt")?;
+    in2.write_str("hello world\n")?;
+
+    match fs::remove_file("test_newfile.txt") {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(&format!(
+        r#"
+        {{
+             print NR > "{}"
+             print > "test_newfile.txt"
+        }}
+    "#,
+        in2.path().to_str().unwrap(),
+    ))?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    let in1 = assert_fs::NamedTempFile::new("in1.txt")?;
+    in1.write_str("line 1\nline 2\n")?;
+
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+
+    cmd.assert().success();
+
+    in2.assert("1\n2\n");
+
+    assert_eq!(
+        fs::read_to_string("test_newfile.txt")?,
+        "line 1\nline 2\n".to_string()
+    );
+    fs::remove_file("test_newfile.txt")?;
+
+    Ok(())
+}
+
+#[test]
+fn print_pipe() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            print "hello world" | "wc -w"
+        }
+        END {
+            print NR
+        }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("0\n       2"));
 
     Ok(())
 }
