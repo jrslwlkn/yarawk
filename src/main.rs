@@ -46,9 +46,9 @@ fn main() {
                             ("-f", val) => {
                                 let mut buf = String::new();
                                 File::open(val)
-                                    .expect(format!("unable to open file: {}", val).as_str())
+                                    .unwrap_or_else(|_| panic!("unable to open file: {}", val))
                                     .read_to_string(&mut buf)
-                                    .expect(format!("unable to read file: {}", val).as_str());
+                                    .unwrap_or_else(|_| panic!("unable to read file: {}", val));
                                 source.push_str(buf.as_str());
                                 i += 2;
                             }
@@ -99,12 +99,12 @@ fn main() {
     let mut code = 0;
     env.execute_begin();
     let mut result = env.execute_actions();
-    if result.is_some() {
-        code = result.unwrap();
+    if let Some(r) = result {
+        code = r;
     }
     result = env.execute_end(result.is_none());
-    if result.is_some() {
-        code = result.unwrap();
+    if let Some(r) = result {
+        code = r;
     }
 
     std::process::exit(code)

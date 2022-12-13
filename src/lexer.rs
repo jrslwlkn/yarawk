@@ -234,8 +234,8 @@ impl<'a> Lexer<'a> {
                 'p' if self.peek_ws("printf") => self.emit(TokenType::Printf, self.col, 6),
                 'p' if self.peek_ws("print") => self.emit(TokenType::Print, self.col, 5),
                 '\n' => {
-                    match self.tokens.last() {
-                        Some(t) => match t.value {
+                    if let Some(t) = self.tokens.last() {
+                        match t.value {
                             TokenType::Semicolon
                             | TokenType::Newline
                             | TokenType::Comma
@@ -251,8 +251,7 @@ impl<'a> Lexer<'a> {
                                 self.advance(0, true);
                                 continue 'main;
                             }
-                        },
-                        _ => {}
+                        }
                     }
                     self.advance(1, true);
                 }

@@ -87,14 +87,14 @@ impl<'a> Environment<'a> {
         self.file_idx = idx;
         let filepath = self.input_filepaths[idx];
         let file =
-            File::open(filepath).expect(format!("unable to open file: {}", filepath).as_str());
+            File::open(filepath).unwrap_or_else(|_| panic!("unable to open file: {}", filepath));
         self.file_reader = Some(BufReader::new(file));
         self.set_variable(
             "FILENAME".to_string(),
             Value::from_string(filepath.to_string()),
         );
         self.set_variable("FNR".to_string(), Value::from_int(0));
-        return true;
+        true
     }
 
     fn next_record(&mut self) -> Option<String> {
@@ -137,7 +137,7 @@ impl<'a> Environment<'a> {
                     )
                     .to_string();
                 self.last_record = ret.clone();
-                return Some(ret);
+                Some(ret)
             }
         }
     }
@@ -151,7 +151,7 @@ impl<'a> Environment<'a> {
             }
             self.read_streams.insert(stream_name.clone(), s);
         };
-        let stream: &mut ReadStream = &mut self.read_streams.get_mut(stream_name).unwrap();
+        let stream: &mut ReadStream = self.read_streams.get_mut(stream_name).unwrap();
         let mut record = vec![];
         match stream.reader.as_mut().read_until(rs, &mut record) {
             Err(_) => {
@@ -168,14 +168,14 @@ impl<'a> Environment<'a> {
                 let ret = std::str::from_utf8(record.as_slice())
                     .unwrap_or(format!("unable to read file: {}", stream_name).trim())
                     .to_string();
-                return (ret, true);
+                (ret, true)
             }
         }
     }
 
     fn get_rs(&self) -> u8 {
         *self
-            .get_variable(&"RS".to_string())
+            .get_variable("RS")
             .to_string()
             .as_bytes()
             .first()
@@ -198,7 +198,7 @@ impl<'a> Environment<'a> {
             Value::ArrayType(val) => val,
             _ => HashMap::new(),
         };
-        let prev_subsep = self.get_variable(&"SUBSEP".to_string());
+        let prev_subsep = self.get_variable("SUBSEP");
         self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
         let key = accessors
             .iter()
@@ -219,12 +219,12 @@ impl<'a> Environment<'a> {
 
     // TODO: The same name shall not be used within the same scope both
     //       as a scalar variable and as an array.
-    fn set_array_variable(&mut self, name: String, accessors: &Vec<Expression<'a>>, value: Value) {
+    fn set_array_variable(&mut self, name: String, accessors: &[Expression<'a>], value: Value) {
         let mut variable = match self.get_variable(&name) {
             Value::ArrayType(val) => val,
             _ => HashMap::new(),
         };
-        let prev_subsep = self.get_variable(&"SUBSEP".to_string());
+        let prev_subsep = self.get_variable("SUBSEP");
         self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
         let key = accessors
             .iter()
@@ -249,11 +249,8 @@ impl<'a> Environment<'a> {
     pub fn execute_end(&mut self, should_run: bool) -> Option<i32> {
         let mut ret = None;
         if should_run {
-            match self.execute_in_action(&self.program.end) {
-                (v, ActionResult::Exit) => {
-                    ret = Some(v.to_int() as i32);
-                }
-                _ => {}
+            if let (v, ActionResult::Exit) = self.execute_in_action(&self.program.end) {
+                ret = Some(v.to_int() as i32);
             }
         }
         for (_, s) in self.write_streams.iter_mut() {
@@ -274,9 +271,9 @@ impl<'a> Environment<'a> {
 
         if set_nf {
             // parse and set field variables
-            let fs = self.get_variable(&"FS".to_string()).to_regex();
+            let fs = self.get_variable("FS").to_regex();
             let mut i = 1;
-            for val in fs.split(&record) {
+            for val in fs.split(record) {
                 let val = val.trim();
                 if !val.is_empty() {
                     self.set_variable(i.to_string(), Value::from_string(val.to_string()));
@@ -292,16 +289,13 @@ impl<'a> Environment<'a> {
         }
 
         if inc_nr {
-            self.set_variable(
-                "NR".to_string(),
-                Self::add_int(self.get_variable(&"NR".to_string()), 1),
-            );
+            self.set_variable("NR".to_string(), Self::add_int(self.get_variable("NR"), 1));
         }
 
         if inc_fnr {
             self.set_variable(
                 "FNR".to_string(),
-                Self::add_int(self.get_variable(&"FNR".to_string()), 1),
+                Self::add_int(self.get_variable("FNR"), 1),
             );
         }
     }
@@ -319,22 +313,22 @@ impl<'a> Environment<'a> {
             for (expressions, statements) in &self.program.actions {
                 match expressions.len() {
                     0 => match self.execute_in_action(statements) {
-                        (v, ActionResult::Next) => continue 'main,
+                        (_, ActionResult::Next) => continue 'main,
                         (v, ActionResult::Exit) => return Some(v.to_int() as i32),
-                        (v, ActionResult::None) => {}
+                        (_, ActionResult::None) => {}
                     },
                     1 => match self.evaluate(expressions.get(0).unwrap()) {
                         Value::Empty => match self.execute_in_action(statements) {
-                            (v, ActionResult::Next) => continue 'main,
+                            (_, ActionResult::Next) => continue 'main,
                             (v, ActionResult::Exit) => return Some(v.to_int() as i32),
-                            (v, ActionResult::None) => {}
+                            (_, ActionResult::None) => {}
                         },
                         Value::PrimitiveType(PrimitiveType::Pattern(re)) => {
                             if re.is_match(record.as_str()) {
                                 match self.execute_in_action(statements) {
-                                    (v, ActionResult::Next) => continue 'main,
+                                    (_, ActionResult::Next) => continue 'main,
                                     (v, ActionResult::Exit) => return Some(v.to_int() as i32),
-                                    (v, ActionResult::None) => {}
+                                    (_, ActionResult::None) => {}
                                 }
                             }
                         }
@@ -356,22 +350,22 @@ impl<'a> Environment<'a> {
                                     if self.match_first(record.as_str(), &p).0 > 0 {
                                         self.ranges_flags[range_idx] = false;
                                         match self.execute_in_action(statements) {
-                                            (v, ActionResult::Next) => continue 'main,
+                                            (_, ActionResult::Next) => continue 'main,
                                             (v, ActionResult::Exit) => {
                                                 return Some(v.to_int() as i32)
                                             }
-                                            (v, ActionResult::None) => {}
+                                            (_, ActionResult::None) => {}
                                         }
                                     }
                                 }
                                 val => {
                                     if val.is_truthy() {
                                         match self.execute_in_action(statements) {
-                                            (v, ActionResult::Next) => continue 'main,
+                                            (_, ActionResult::Next) => continue 'main,
                                             (v, ActionResult::Exit) => {
                                                 return Some(v.to_int() as i32)
                                             }
-                                            (v, ActionResult::None) => {}
+                                            (_, ActionResult::None) => {}
                                         }
                                     }
                                 }
@@ -386,11 +380,11 @@ impl<'a> Environment<'a> {
                                         cur_record = &cur_record[(match_start + match_len - 1)..];
                                         self.ranges_flags[range_idx] = true;
                                         match self.execute_in_action(statements) {
-                                            (v, ActionResult::Next) => continue 'main,
+                                            (_, ActionResult::Next) => continue 'main,
                                             (v, ActionResult::Exit) => {
                                                 return Some(v.to_int() as i32)
                                             }
-                                            (v, ActionResult::None) => {}
+                                            (_, ActionResult::None) => {}
                                         }
                                         if self.match_first(cur_record, &p).0 > 0 {
                                             // range ends within record
@@ -401,11 +395,11 @@ impl<'a> Environment<'a> {
                                 val => {
                                     if val.is_truthy() {
                                         match self.execute_in_action(statements) {
-                                            (v, ActionResult::Next) => continue 'main,
+                                            (_, ActionResult::Next) => continue 'main,
                                             (v, ActionResult::Exit) => {
                                                 return Some(v.to_int() as i32)
                                             }
-                                            (v, ActionResult::None) => {}
+                                            (_, ActionResult::None) => {}
                                         }
                                     }
                                 }
@@ -439,7 +433,6 @@ impl<'a> Environment<'a> {
     }
 
     fn execute_in_action(&mut self, statements: &Vec<Statement<'a>>) -> (Value, ActionResult) {
-        let mut ret = Value::Empty;
         for s in statements {
             match self.execute_one(s) {
                 Value::Empty => {}
@@ -457,7 +450,7 @@ impl<'a> Environment<'a> {
                 self.execute_one(&Statement::Print(vec![]));
             }
         }
-        (ret, ActionResult::None)
+        (Value::Empty, ActionResult::None)
     }
 
     fn execute_in_loop(&mut self, statements: &Vec<Statement<'a>>) -> Value {
@@ -591,7 +584,7 @@ impl<'a> Environment<'a> {
             Expression::Empty => {
                 self.get_variable("0").to_string() + self.get_variable("ORS").to_string().as_str()
             }
-            Expression::Grouping(expressions) => self.get_print_string(&expressions),
+            Expression::Grouping(expressions) => self.get_print_string(expressions),
             e => self.get_print_string(&vec![e.clone()]),
         }
     }
@@ -616,7 +609,7 @@ impl<'a> Environment<'a> {
         match expression {
             Expression::Empty => Value::Empty,
             Expression::Literal(val) => Value::from_primitive(val),
-            Expression::Variable(name) => self.get_variable(&name.to_string()),
+            Expression::Variable(name) => self.get_variable(name),
             Expression::ArrayVariable(name, expressions) => {
                 self.get_array_variable(name.to_string(), expressions)
             }
@@ -893,7 +886,7 @@ impl<'a> Environment<'a> {
                                 //       the value of $0 to be recomputed, with the fields being separated by the value of OFS.  Each field variable shall have a string value or an
                                 //       uninitialized value when created. Field variables shall have the uninitialized value when created from $0 using FS and  the  variable  does
                                 //       not contain any characters.
-                                let mut var = match self.get_variable(&name.to_string()) {
+                                let mut var = match self.get_variable(name) {
                                     Value::ArrayType(val) => val,
                                     _ => {
                                         let val = Value::ArrayType(HashMap::new());
@@ -901,7 +894,7 @@ impl<'a> Environment<'a> {
                                         HashMap::new()
                                     }
                                 };
-                                let prev_subsep = self.get_variable(&"SUBSEP".to_string());
+                                let prev_subsep = self.get_variable("SUBSEP");
                                 self.set_variable(
                                     "SUBSEP".to_string(),
                                     Value::from_string(",".to_string()),
@@ -956,12 +949,11 @@ impl<'a> Environment<'a> {
                     }),
                     BinaryOperator::Pipe => {
                         match (&**lhs_expression, &**rhs_expression) {
-                            (Expression::Function("print", _), _) => todo!(),
                             (Expression::Function("printf", _), _) => todo!(),
                             (_, Expression::Getline(e)) => match &**e {
                                 Expression::Empty => {
                                     let cmd_def = &lhs.to_string();
-                                    if !self.add_command_read_stream_if_absent(&cmd_def) {
+                                    if !self.add_command_read_stream_if_absent(cmd_def) {
                                         return Value::Empty;
                                     }
                                     let (record, _) = self.next_stream_record(cmd_def);
@@ -975,7 +967,7 @@ impl<'a> Environment<'a> {
                                 }
                                 Expression::Variable(v) => {
                                     let cmd_def = &lhs.to_string();
-                                    if !self.add_command_read_stream_if_absent(&cmd_def) {
+                                    if !self.add_command_read_stream_if_absent(cmd_def) {
                                         return Value::Empty;
                                     }
                                     let (record, _) = self.next_stream_record(cmd_def);
@@ -1084,7 +1076,7 @@ impl<'a> Environment<'a> {
                 let function = self
                     .functions
                     .get(&name.to_string())
-                    .expect(format!("function {} does not exist", name).as_str())
+                    .unwrap_or_else(|| panic!("function {} does not exist", name))
                     .clone();
                 if args.len() > function.0.len() {
                     panic!("function {} does not take {} arguments", name, args.len())
@@ -1406,7 +1398,7 @@ impl WriteStream {
     pub fn new(def: String, is_file: bool, truncate: bool) -> Self {
         if is_file {
             Self {
-                filepath: String::from(def),
+                filepath: def,
                 command: String::from(""),
                 input: String::from(""),
                 truncate,
@@ -1414,7 +1406,7 @@ impl WriteStream {
         } else {
             Self {
                 filepath: String::from(""),
-                command: String::from(def),
+                command: def,
                 input: String::from(""),
                 truncate,
             }
