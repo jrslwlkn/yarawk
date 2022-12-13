@@ -944,7 +944,16 @@ impl<'a> Environment<'a> {
                     } else {
                         0
                     }),
-                    BinaryOperator::In => todo!(),
+                    BinaryOperator::In => Value::from_int(match (lhs, rhs) {
+                        (v, Value::ArrayType(val)) => {
+                            if val.contains_key(&v.to_string()) {
+                                1
+                            } else {
+                                0
+                            }
+                        }
+                        _ => 0,
+                    }),
                     BinaryOperator::Pipe => {
                         match (&**lhs_expression, &**rhs_expression) {
                             (Expression::Function("print", _), _) => todo!(),

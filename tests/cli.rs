@@ -494,3 +494,29 @@ fn print_pipe() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn in_operator() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            a["hello"] = "world"
+            a[3] = 4
+
+            x1 = "hello" in a
+            x2 = "3" in a
+            x3 = "a" in a
+            x4 = "a" in b
+
+            print x1, x2, x3, x4
+        }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert().success().stdout(predicate::eq("1 1 0 0\n"));
+
+    Ok(())
+}
