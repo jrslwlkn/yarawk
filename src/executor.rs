@@ -47,6 +47,12 @@ pub enum Value {
     ArrayType(HashMap<String, PrimitiveType>),
 }
 
+enum ActionResult {
+    None,
+    Next,
+    Exit,
+}
+
 impl<'a> Environment<'a> {
     pub fn new(input_filepaths: &'a [&'a str], program: &'a Program<'a>) -> Self {
         let mut ret = Self {
@@ -240,13 +246,20 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn execute_end(&mut self) {
-        for s in &self.program.end {
-            self.execute_one(s);
+    pub fn execute_end(&mut self, should_run: bool) -> Option<i32> {
+        let mut ret = None;
+        if should_run {
+            match self.execute_in_action(&self.program.end) {
+                (v, ActionResult::Exit) => {
+                    ret = Some(v.to_int() as i32);
+                }
+                _ => {}
+            }
         }
         for (_, s) in self.write_streams.iter_mut() {
             s.close();
         }
+        ret
     }
 
     fn execute_getline(
@@ -293,8 +306,8 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn execute_actions(&mut self) {
-        loop {
+    pub fn execute_actions(&mut self) -> Option<i32> {
+        'main: loop {
             let record = self.next_record();
             if record.is_none() {
                 break;
@@ -305,16 +318,24 @@ impl<'a> Environment<'a> {
             let mut range_idx = 0;
             for (expressions, statements) in &self.program.actions {
                 match expressions.len() {
-                    0 => {
-                        self.execute_in_action(statements);
-                    }
+                    0 => match self.execute_in_action(statements) {
+                        (v, ActionResult::Next) => continue 'main,
+                        (v, ActionResult::Exit) => return Some(v.to_int() as i32),
+                        (v, ActionResult::None) => {}
+                    },
                     1 => match self.evaluate(expressions.get(0).unwrap()) {
-                        Value::Empty => {
-                            self.execute_in_action(statements);
-                        }
+                        Value::Empty => match self.execute_in_action(statements) {
+                            (v, ActionResult::Next) => continue 'main,
+                            (v, ActionResult::Exit) => return Some(v.to_int() as i32),
+                            (v, ActionResult::None) => {}
+                        },
                         Value::PrimitiveType(PrimitiveType::Pattern(re)) => {
                             if re.is_match(record.as_str()) {
-                                self.execute_in_action(statements);
+                                match self.execute_in_action(statements) {
+                                    (v, ActionResult::Next) => continue 'main,
+                                    (v, ActionResult::Exit) => return Some(v.to_int() as i32),
+                                    (v, ActionResult::None) => {}
+                                }
                             }
                         }
                         val => {
@@ -334,12 +355,24 @@ impl<'a> Environment<'a> {
                                 Value::PrimitiveType(PrimitiveType::Pattern(p)) => {
                                     if self.match_first(record.as_str(), &p).0 > 0 {
                                         self.ranges_flags[range_idx] = false;
-                                        self.execute_in_action(statements);
+                                        match self.execute_in_action(statements) {
+                                            (v, ActionResult::Next) => continue 'main,
+                                            (v, ActionResult::Exit) => {
+                                                return Some(v.to_int() as i32)
+                                            }
+                                            (v, ActionResult::None) => {}
+                                        }
                                     }
                                 }
                                 val => {
                                     if val.is_truthy() {
-                                        self.execute_in_action(statements);
+                                        match self.execute_in_action(statements) {
+                                            (v, ActionResult::Next) => continue 'main,
+                                            (v, ActionResult::Exit) => {
+                                                return Some(v.to_int() as i32)
+                                            }
+                                            (v, ActionResult::None) => {}
+                                        }
                                     }
                                 }
                             }
@@ -352,7 +385,13 @@ impl<'a> Environment<'a> {
                                     if match_start > 0 {
                                         cur_record = &cur_record[(match_start + match_len - 1)..];
                                         self.ranges_flags[range_idx] = true;
-                                        self.execute_in_action(statements);
+                                        match self.execute_in_action(statements) {
+                                            (v, ActionResult::Next) => continue 'main,
+                                            (v, ActionResult::Exit) => {
+                                                return Some(v.to_int() as i32)
+                                            }
+                                            (v, ActionResult::None) => {}
+                                        }
                                         if self.match_first(cur_record, &p).0 > 0 {
                                             // range ends within record
                                             self.ranges_flags[range_idx] = false;
@@ -361,7 +400,13 @@ impl<'a> Environment<'a> {
                                 }
                                 val => {
                                     if val.is_truthy() {
-                                        self.execute_in_action(statements);
+                                        match self.execute_in_action(statements) {
+                                            (v, ActionResult::Next) => continue 'main,
+                                            (v, ActionResult::Exit) => {
+                                                return Some(v.to_int() as i32)
+                                            }
+                                            (v, ActionResult::None) => {}
+                                        }
                                     }
                                 }
                             }
@@ -375,6 +420,7 @@ impl<'a> Environment<'a> {
                 }
             }
         }
+        None
     }
 
     fn execute(&mut self, statements: &Vec<Statement<'a>>) -> Value {
@@ -392,25 +438,26 @@ impl<'a> Environment<'a> {
         ret
     }
 
-    fn execute_in_action(&mut self, statements: &Vec<Statement<'a>>) -> Value {
+    fn execute_in_action(&mut self, statements: &Vec<Statement<'a>>) -> (Value, ActionResult) {
         let mut ret = Value::Empty;
         for s in statements {
             match self.execute_one(s) {
                 Value::Empty => {}
-                val => {
-                    // here we assume that if a statement returns a value, it must be a return or exit.
-                    ret = val;
-                    break;
-                }
+                val => match s {
+                    Statement::Next => return (val, ActionResult::Next),
+                    Statement::Exit(_) => return (val, ActionResult::Exit),
+                    Statement::Return(_) => return (val, ActionResult::None),
+                    _ => unreachable!(),
+                },
+            }
+            if statements.is_empty()
+                || statements.len() == 1 && *statements.get(0).unwrap() == Statement::Empty
+            {
+                // default statement in actions is print current record
+                self.execute_one(&Statement::Print(vec![]));
             }
         }
-        if statements.is_empty()
-            || statements.len() == 1 && *statements.get(0).unwrap() == Statement::Empty
-        {
-            // default statement in actions is print current record
-            self.execute_one(&Statement::Print(vec![]));
-        }
-        ret
+        (ret, ActionResult::None)
     }
 
     fn execute_in_loop(&mut self, statements: &Vec<Statement<'a>>) -> Value {
@@ -436,11 +483,9 @@ impl<'a> Environment<'a> {
     fn execute_one(&mut self, statement: &Statement<'a>) -> Value {
         match statement {
             Statement::Empty => Value::Empty,
-            Statement::Exit(e) => {
-                std::process::exit(self.evaluate(e).to_int().try_into().unwrap_or(-69420));
-            }
+            Statement::Exit(e) => self.evaluate(e),
             Statement::Return(e) => self.evaluate(e),
-            Statement::Next => todo!(),
+            Statement::Next => Value::Empty,
             Statement::If(cond, truthy, falsy) => {
                 if self.evaluate(cond).is_truthy() {
                     self.execute(truthy)
@@ -1046,7 +1091,7 @@ impl<'a> Environment<'a> {
                     self.local_scope
                         .insert(function.0.get(i).unwrap().to_string(), val);
                 }
-                let ret = self.execute_in_action(&function.1.to_vec());
+                let (ret, _) = self.execute_in_action(&function.1.to_vec());
                 self.local_scope = prev_scope;
                 ret
             }

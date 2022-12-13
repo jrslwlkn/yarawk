@@ -95,9 +95,19 @@ fn main() {
 
     env.set_variable("ARGC".to_string(), Value::from_int(argv.len() as i64 + 1));
     env.set_variable("ARGV".to_string(), Value::from_array(argv_var));
+
+    let mut code = 0;
     env.execute_begin();
-    env.execute_actions();
-    env.execute_end();
+    let mut result = env.execute_actions();
+    if result.is_some() {
+        code = result.unwrap();
+    }
+    result = env.execute_end(result.is_none());
+    if result.is_some() {
+        code = result.unwrap();
+    }
+
+    std::process::exit(code)
 }
 
 fn get_kv_pair(input: &str) -> Option<(&str, &str)> {
