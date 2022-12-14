@@ -578,3 +578,25 @@ fn multidimensional_in_and_delete() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn array_variable_static_type() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            x = 42
+            x[1] = 2
+            print x
+        }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("was used as array"));
+
+    Ok(())
+}

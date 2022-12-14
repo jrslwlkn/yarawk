@@ -212,7 +212,8 @@ impl<'a> Environment<'a> {
     fn get_array_variable(&mut self, name: &str, accessors: &[Expression<'a>]) -> Value {
         let variable = match self.get_variable(name) {
             Value::ArrayType(val) => val,
-            _ => HashMap::new(),
+            Value::Empty => HashMap::new(),
+            Value::PrimitiveType(v) => panic!("{} has type {:?} but was used as array", name, v),
         };
         let key = self.get_array_accessor(accessors);
         let ret = match variable.get(&key) {
@@ -222,12 +223,11 @@ impl<'a> Environment<'a> {
         ret
     }
 
-    // TODO: The same name shall not be used within the same scope both
-    //       as a scalar variable and as an array.
     fn set_array_variable(&mut self, name: String, accessors: &[Expression<'a>], value: Value) {
         let mut variable = match self.get_variable(&name) {
             Value::ArrayType(val) => val,
-            _ => HashMap::new(),
+            Value::Empty => HashMap::new(),
+            Value::PrimitiveType(v) => panic!("{} has type {:?} but was used as array", name, v),
         };
         let key = self.get_array_accessor(accessors);
         variable.insert(key, value.to_primitive());
