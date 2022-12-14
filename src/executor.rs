@@ -193,11 +193,7 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn get_array_variable(&mut self, name: String, accessors: &[Expression<'a>]) -> Value {
-        let variable = match self.get_variable(&name) {
-            Value::ArrayType(val) => val,
-            _ => HashMap::new(),
-        };
+    fn get_array_accessor(&mut self, accessors: &[Expression<'a>]) -> String {
         let prev_subsep = self.get_variable("SUBSEP");
         self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
         let key = accessors
@@ -209,11 +205,20 @@ impl<'a> Environment<'a> {
                 acc
             })
             .unwrap();
+        self.set_variable("SUBSEP".to_string(), prev_subsep);
+        key
+    }
+
+    fn get_array_variable(&mut self, name: &str, accessors: &[Expression<'a>]) -> Value {
+        let variable = match self.get_variable(&name) {
+            Value::ArrayType(val) => val,
+            _ => HashMap::new(),
+        };
+        let key = self.get_array_accessor(accessors);
         let ret = match variable.get(&key) {
             None => Value::Empty,
             Some(v) => Value::from_primitive(v),
         };
-        self.set_variable("SUBSEP".to_string(), prev_subsep);
         ret
     }
 
@@ -224,19 +229,8 @@ impl<'a> Environment<'a> {
             Value::ArrayType(val) => val,
             _ => HashMap::new(),
         };
-        let prev_subsep = self.get_variable("SUBSEP");
-        self.set_variable("SUBSEP".to_string(), Value::from_string(",".to_string()));
-        let key = accessors
-            .iter()
-            .map(|e| self.evaluate(e).to_string())
-            .reduce(|mut acc, x| {
-                acc.push_str(x.as_str());
-                acc.push(',');
-                acc
-            })
-            .unwrap();
+        let key = self.get_array_accessor(accessors);
         variable.insert(key, value.to_primitive());
-        self.set_variable("SUBSEP".to_string(), prev_subsep);
         self.set_variable(name, Value::ArrayType(variable));
     }
 
@@ -574,7 +568,26 @@ impl<'a> Environment<'a> {
                 };
                 Value::Empty
             }
-            Statement::Delete(e) => todo!(),
+            Statement::Delete(e) => {
+                match e {
+                    Expression::Empty => panic!("nothing to delete"), // TODO: add line/position
+                    Expression::Variable(name) => {
+                        self.variables.remove(*name);
+                    }
+                    Expression::ArrayVariable(name, accessors) => {
+                        let var = self.get_variable(name);
+                        match var {
+                            Value::ArrayType(mut v) => {
+                                v.remove(&self.get_array_accessor(accessors));
+                                self.set_variable(name.to_string(), Value::from_array(v));
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    e => panic!("cannot delete expression that is not a variable: {:?}", e),
+                }
+                Value::Empty
+            }
             _ => panic!("unexpected statement: {:?}", statement),
         }
     }
@@ -611,7 +624,7 @@ impl<'a> Environment<'a> {
             Expression::Literal(val) => Value::from_primitive(val),
             Expression::Variable(name) => self.get_variable(name),
             Expression::ArrayVariable(name, expressions) => {
-                self.get_array_variable(name.to_string(), expressions)
+                self.get_array_variable(name, expressions)
             }
             Expression::FieldVariable(e) => {
                 let name = self.evaluate(e).to_string();
@@ -645,7 +658,7 @@ impl<'a> Environment<'a> {
                         ret
                     }
                     Expression::ArrayVariable(name, accessors) => {
-                        let val = self.get_array_variable(name.to_string(), &accessors);
+                        let val = self.get_array_variable(name, &accessors);
                         let ret = Self::add_int(val, 1);
                         self.set_array_variable(name.to_string(), &accessors, ret.clone());
                         ret
@@ -665,7 +678,7 @@ impl<'a> Environment<'a> {
                         ret
                     }
                     Expression::ArrayVariable(name, accessors) => {
-                        let val = self.get_array_variable(name.to_string(), &accessors);
+                        let val = self.get_array_variable(name, &accessors);
                         let ret = Self::add_int(val, -1);
                         self.set_array_variable(name.to_string(), &accessors, ret.clone());
                         ret
@@ -685,7 +698,7 @@ impl<'a> Environment<'a> {
                         ret
                     }
                     Expression::ArrayVariable(name, accessors) => {
-                        let ret = self.get_array_variable(name.to_string(), &accessors);
+                        let ret = self.get_array_variable(name, &accessors);
                         self.set_array_variable(
                             name.to_string(),
                             &accessors,
@@ -708,7 +721,7 @@ impl<'a> Environment<'a> {
                         ret
                     }
                     Expression::ArrayVariable(name, accessors) => {
-                        let ret = self.get_array_variable(name.to_string(), &accessors);
+                        let ret = self.get_array_variable(name, &accessors);
                         self.set_array_variable(
                             name.to_string(),
                             &accessors,
