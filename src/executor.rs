@@ -210,7 +210,7 @@ impl<'a> Environment<'a> {
     }
 
     fn get_array_variable(&mut self, name: &str, accessors: &[Expression<'a>]) -> Value {
-        let variable = match self.get_variable(&name) {
+        let variable = match self.get_variable(name) {
             Value::ArrayType(val) => val,
             _ => HashMap::new(),
         };
@@ -631,14 +631,12 @@ impl<'a> Environment<'a> {
                 self.get_variable(&name)
             }
             Expression::Grouping(expressions) => {
-                if expressions.len() != 1 {
-                    panic!(
-                        "expected 1 expression, received: {}, {:?}",
-                        expressions.len(),
-                        *expressions
-                    )
+                if expressions.len() > 1 {
+                    // assume this is a check before the In operator
+                    Value::from_string(self.get_array_accessor(expressions))
+                } else {
+                    self.evaluate(expressions.get(0).unwrap())
                 }
-                self.evaluate(expressions.get(0).unwrap())
             }
             Expression::Unary(op, val) => match op {
                 UnaryOperator::PrePlus => match self.evaluate(val) {

@@ -552,3 +552,29 @@ fn delete_operator() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn multidimensional_in_and_delete() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+            a["hello"] = "world"
+            a[0,6,9] = 4.2
+
+            x1 = "hello" in a
+            x2 = (0,6,9) in a
+            delete a[0,6,9]
+            x3 = (0,6,9) in a
+
+            print x1, x2, x3
+        }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert().success().stdout(predicate::eq("1 1 0\n"));
+
+    Ok(())
+}
