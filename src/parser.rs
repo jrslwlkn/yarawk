@@ -359,8 +359,8 @@ impl<'a> Parser<'a> {
                         self.skip_by(2);
                         let args = self.comma_separated_expressions();
                         let mut ret = Expression::Function(n, Box::new(args));
-                        ret = self.extended_expression(ret, &mut trace);
                         self.advance_one(TokenType::RightParen);
+                        ret = self.extended_expression(ret, &mut trace);
                         ret
                     }
                     TokenType::Identifier(name)
