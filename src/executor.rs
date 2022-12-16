@@ -62,7 +62,7 @@ impl<'a> Environment<'a> {
             file_reader: None,
             program,
             variables: Self::default_variables(),
-            functions: Self::default_functions(),
+            functions: HashMap::new(),
             max_field: 0,
             ranges_flags: vec![],
             local_scope: HashMap::new(),
@@ -1084,27 +1084,48 @@ impl<'a> Environment<'a> {
                 }
             }
             Expression::Function(name, args) => {
-                let function = self
-                    .functions
-                    .get(&name.to_string())
-                    .unwrap_or_else(|| panic!("function {} does not exist", name))
-                    .clone();
-                if args.len() > function.0.len() {
-                    panic!("function {} does not take {} arguments", name, args.len())
-                }
+                let ret: Value;
 
-                let prev_scope = self.local_scope.clone();
-                self.local_scope = HashMap::new();
-                for i in 0..function.0.len() {
-                    let val = match args.get(i) {
-                        None => Value::Empty,
-                        Some(e) => self.evaluate(e),
-                    };
-                    self.local_scope
-                        .insert(function.0.get(i).unwrap().to_string(), val);
-                }
-                let (ret, _) = self.execute_in_action(&function.1.to_vec());
-                self.local_scope = prev_scope;
+                let evaluated_args: Vec<Value> = args.iter().map(|a| self.evaluate(a)).collect();
+                match *name {
+                    "atan2" => return crate::standard_functions::atan2(&evaluated_args),
+                    "cos" => return crate::standard_functions::cos(&evaluated_args),
+                    "sin" => return crate::standard_functions::sin(&evaluated_args),
+                    "exp" => return crate::standard_functions::exp(&evaluated_args),
+                    "log" => return crate::standard_functions::log(&evaluated_args),
+                    "sqrt" => return crate::standard_functions::sqrt(&evaluated_args),
+                    "int" => return crate::standard_functions::int(&evaluated_args),
+                    "rand" => return crate::standard_functions::rand(&evaluated_args),
+                    "srand" => return crate::standard_functions::srand(&evaluated_args),
+                    // "gsub" => ret = crate::standard_functions::gsub(&evaluated_args),
+                    // "index" => ret = crate::standard_functions::index(&evaluated_args),
+                    // "length" => ret = crate::standard_functions::length(&evaluated_args),
+                    // "match" => ret = crate::standard_functions::matchf(&evaluated_args),
+                    // "split" => ret = crate::standard_functions::split(&evaluated_args),
+                    // "sprintf" => ret = crate::standard_functions::sprintf(&evaluated_args),
+                    // "sub" => ret = crate::standard_functions::sub(&evaluated_args),
+                    // "substr" => ret = crate::standard_functions::substr(&evaluated_args),
+                    // "tolower" => ret = crate::standard_functions::tolower(&evaluated_args),
+                    // "toupper" => ret = crate::standard_functions::toupper(&evaluated_args),
+                    // "close" => ret = crate::standard_functions::close(&evaluated_args),
+                    // "system" => ret = crate::standard_functions::system(&evaluated_args),
+                    _ => {
+                        let function = self.functions.get(&name.to_string()).unwrap().clone();
+
+                        let prev_scope = self.local_scope.clone();
+                        self.local_scope = HashMap::new();
+
+                        for i in 0..function.0.len() {
+                            let val = evaluated_args.get(i).unwrap_or(&Value::Empty);
+                            self.local_scope
+                                .insert(function.0.get(i).unwrap().to_string(), val.clone());
+                        }
+
+                        (ret, _) = self.execute_in_action(&function.1.to_vec());
+                        self.local_scope = prev_scope;
+                    }
+                };
+
                 ret
             }
         }
@@ -1237,32 +1258,6 @@ impl<'a> Environment<'a> {
         ret.insert("RS".to_string(), Value::from_string("\n".to_string()));
         ret.insert("RSTART".to_string(), Value::from_int(0));
         ret.insert("SUBSEP".to_string(), Value::from_string(",".to_string()));
-        ret
-    }
-
-    fn default_functions() -> HashMap<String, (Vec<&'a str>, Vec<Statement<'a>>)> {
-        let mut ret = HashMap::new();
-        ret.insert("atan2".to_string(), (vec![], vec![])); // TODO
-        ret.insert("cos".to_string(), (vec![], vec![])); // TODO
-        ret.insert("sin".to_string(), (vec![], vec![])); // TODO
-        ret.insert("exp".to_string(), (vec![], vec![])); // TODO
-        ret.insert("log".to_string(), (vec![], vec![])); // TODO
-        ret.insert("sqrt".to_string(), (vec![], vec![])); // TODO
-        ret.insert("int".to_string(), (vec![], vec![])); // TODO
-        ret.insert("rand".to_string(), (vec![], vec![])); // TODO
-        ret.insert("srand".to_string(), (vec![], vec![])); // TODO
-        ret.insert("gsub".to_string(), (vec![], vec![])); // TODO
-        ret.insert("index".to_string(), (vec![], vec![])); // TODO
-        ret.insert("length".to_string(), (vec![], vec![])); // TODO
-        ret.insert("match".to_string(), (vec![], vec![])); // TODO
-        ret.insert("split".to_string(), (vec![], vec![])); // TODO
-        ret.insert("sprintf".to_string(), (vec![], vec![])); // TODO
-        ret.insert("sub".to_string(), (vec![], vec![])); // TODO
-        ret.insert("substr".to_string(), (vec![], vec![])); // TODO
-        ret.insert("tolower".to_string(), (vec![], vec![])); // TODO
-        ret.insert("toupper".to_string(), (vec![], vec![])); // TODO
-        ret.insert("close".to_string(), (vec![], vec![])); // TODO
-        ret.insert("system".to_string(), (vec![], vec![])); // TODO
         ret
     }
 }

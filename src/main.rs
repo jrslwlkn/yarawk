@@ -11,6 +11,7 @@ pub mod executor;
 pub mod lexer;
 pub mod parser;
 pub mod parser_helpers;
+pub mod standard_functions;
 pub mod token;
 
 fn main() {

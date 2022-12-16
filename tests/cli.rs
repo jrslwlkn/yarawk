@@ -600,3 +600,31 @@ fn array_variable_static_type() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn standard_math_functions() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+        BEGIN {
+        print (atan2(4,2.) <= 1.11), 
+              (cos(69) > 0.99),
+              (sin(96) > 0.98), 
+              (exp(4) > 54),
+              (log(9) >= 2.19),
+              (sqrt(9) == 3),
+              int(4.332),
+              (rand() >= 0 && rand() <= 1),
+              (srand() != 0)
+        }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+    cmd.assert()
+        .success()
+        .stdout(predicate::eq("1 1 1 1 1 1 4 1 1\n"));
+
+    Ok(())
+}
