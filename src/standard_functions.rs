@@ -1,6 +1,9 @@
 use crate::executor::Value;
 use rand::{Rng, SeedableRng};
-use std::time::{Duration, SystemTime};
+use std::{
+    cmp,
+    time::{Duration, SystemTime},
+};
 
 fn ensure_args_count(name: &str, args: &[Value], min_count: i64, max_count: i64) -> bool {
     if (args.len() as i64) < min_count || (max_count > 0 && max_count < (args.len() as i64)) {
@@ -74,4 +77,46 @@ pub fn srand(args: &[Value]) -> Value {
     )
     .gen();
     Value::from_int(ret)
+}
+
+pub fn substr(args: &[Value]) -> Value {
+    // Return the at most n-character substring of s that begins at position m, numbering from 1.
+    ensure_args_count("substr", args, 2, -1);
+    let s = args[0].to_string();
+    let m = (args[1].to_int() - 1) as usize;
+    let n = (args[2].to_int() - 1) as usize;
+    let ret = &s
+        .get(
+            m..=(if n >= 0 {
+                cmp::min(m + n, s.len() - 1)
+            } else {
+                s.len() - 1
+            }),
+        )
+        .unwrap_or("");
+    Value::from_string(ret.to_string())
+}
+
+pub fn index(args: &[Value]) -> Value {
+    //  Return  the  position, in characters, numbering from 1, in string s where string t first occurs,
+    // or zero if it does not occur at all.
+    ensure_args_count("index", args, 2, -1);
+    let s = args[0].to_string();
+    let t = args[1].to_string();
+    Value::from_int((s.find(&t).unwrap_or(0) + 1) as i64)
+}
+
+pub fn length(args: &[Value]) -> Value {
+    ensure_args_count("length", args, -1, -1);
+    Value::from_int(args[0].to_string().len() as i64)
+}
+
+pub fn tolower(args: &[Value]) -> Value {
+    ensure_args_count("tolower", args, -1, -1);
+    Value::from_string(args[0].to_string().to_lowercase())
+}
+
+pub fn toupper(args: &[Value]) -> Value {
+    ensure_args_count("toupper", args, -1, -1);
+    Value::from_string(args[0].to_string().to_uppercase())
 }
