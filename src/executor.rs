@@ -740,9 +740,29 @@ impl<'a> Environment<'a> {
                 }
             },
             Expression::Binary(op, lhs_expression, rhs_expression) => {
-                let lhs = self.evaluate(lhs_expression);
+                let lhs = match **lhs_expression {
+                    Expression::Function("printf", _)
+                        if *op == BinaryOperator::GreaterThan
+                            || *op == BinaryOperator::Append
+                            || *op == BinaryOperator::Pipe =>
+                    {
+                        Value::Empty
+                    }
+                    _ => self.evaluate(lhs_expression),
+                };
                 let rhs = match **rhs_expression {
-                    Expression::Getline(_) if op == &BinaryOperator::Pipe => Value::Empty,
+                    Expression::Getline(_)
+                        if *op == BinaryOperator::Pipe || *op == BinaryOperator::LessThan =>
+                    {
+                        Value::Empty
+                    }
+                    Expression::Function("printf", _)
+                        if *op == BinaryOperator::GreaterThan
+                            || *op == BinaryOperator::Append
+                            || *op == BinaryOperator::Pipe =>
+                    {
+                        Value::Empty
+                    }
                     _ => self.evaluate(rhs_expression),
                 };
                 match op {
@@ -775,6 +795,16 @@ impl<'a> Environment<'a> {
                         Value::from_int(val)
                     }
                     BinaryOperator::GreaterThan => {
+                        match &**lhs_expression {
+                            Expression::Function("printf", args) => {
+                                let record = &self.get_print_string(&args);
+                                let filename = &self.evaluate(&rhs_expression).to_string();
+                                self.add_write_stream_if_absent(filename, true, true)
+                                    .write(record);
+                            }
+                            _ => {}
+                        }
+
                         let val = match (&lhs, &rhs) {
                             (Value::PrimitiveType(PrimitiveType::Float(_)), _)
                             | (_, Value::PrimitiveType(PrimitiveType::Float(_))) => {
@@ -963,7 +993,11 @@ impl<'a> Environment<'a> {
                     }),
                     BinaryOperator::Pipe => {
                         match (&**lhs_expression, &**rhs_expression) {
-                            (Expression::Function("printf", _), _) => todo!(),
+                            (Expression::Function("printf", args), _) => {
+                                let command = self.get_print_string(&args);
+                                self.add_write_stream_if_absent(&command, false, false)
+                                    .pipe(&rhs.to_string());
+                            }
                             (_, Expression::Getline(e)) => match &**e {
                                 Expression::Empty => {
                                     let cmd_def = &lhs.to_string();
@@ -995,11 +1029,20 @@ impl<'a> Environment<'a> {
                                 }
                                 e => panic!("unexpected expression in pipe/getline: {:?}", e),
                             },
-                            _ => todo!(),
+                            p => panic!("unexpected pipe between: {:?}", p),
                         };
                         Value::Empty
                     }
-                    BinaryOperator::Append => todo!(),
+                    BinaryOperator::Append => match (&**lhs_expression, &**rhs_expression) {
+                        (Expression::Function("printf", args), _) => {
+                            let record = &self.get_print_string(args);
+                            let filename = &self.evaluate(&rhs_expression).to_string();
+                            self.add_write_stream_if_absent(filename, true, false)
+                                .write(record);
+                            Value::Empty
+                        }
+                        p => panic!("unexpected append between: {:?}", p),
+                    },
                 }
             }
             Expression::Getline(e) => {
@@ -1087,7 +1130,11 @@ impl<'a> Environment<'a> {
                 }
             }
             Expression::Function(name, args) => {
-                let evaluated_args: Vec<Value> = args.iter().map(|a| self.evaluate(a)).collect();
+                let evaluated_args: Vec<Value> = if *name == "printf" {
+                    vec![]
+                } else {
+                    args.iter().map(|a| self.evaluate(a)).collect()
+                };
                 match *name {
                     "atan2" => return crate::standard_functions::atan2(&evaluated_args),
                     "cos" => return crate::standard_functions::cos(&evaluated_args),
@@ -1098,14 +1145,27 @@ impl<'a> Environment<'a> {
                     "int" => return crate::standard_functions::int(&evaluated_args),
                     "rand" => return crate::standard_functions::rand(&evaluated_args),
                     "srand" => return crate::standard_functions::srand(&evaluated_args),
-                    // TODO:
+
+                    //    sub(ere, repl[, in ])
+                    // 	 Substitute the string repl in place of the first instance of the extended regular expression ERE in string in and return the num-
+                    // 	 ber of substitutions. An <ampersand> ('&') appearing in the string repl shall be replaced by the string from in that matches  the
+                    // 	 ERE.  An  <ampersand> preceded with a <backslash> shall be interpreted as the literal <ampersand> character. An occurrence of two
+                    // 	 consecutive <backslash> characters shall be interpreted as just a single literal <backslash> character. Any other occurrence of a
+                    // 	 <backslash>  (for  example, preceding any other character) shall be treated as a literal <backslash> character. Note that if repl
+                    // 	 is a string literal (the lexical token STRING; see Grammar), the handling of the <ampersand> character occurs after  any  lexical
+                    // 	 processing, including any lexical <backslash>-escape sequence processing. If in is specified and it is not an lvalue (see Expres-
+                    // 	 sions in awk), the behavior is undefined. If in is omitted, awk shall use the current record ($0) in its place.
+                    //
                     // "gsub" => return crate::standard_functions::gsub(&evaluated_args),
                     "index" => return crate::standard_functions::index(&evaluated_args),
                     "length" => return crate::standard_functions::length(&evaluated_args),
                     // TODO:
                     // "match" => return crate::standard_functions::matchf(&evaluated_args),
                     // "split" => return crate::standard_functions::split(&evaluated_args),
-                    // "printf" => return crate::standard_functions::printf(&evaluated_args),
+                    "printf" => {
+                        print!("{}", self.get_print_string(args));
+                        Value::Empty
+                    }
                     // "sprintf" => return crate::standard_functions::sprintf(&evaluated_args),
                     // "sub" => return crate::standard_functions::sub(&evaluated_args),
                     "substr" => return crate::standard_functions::substr(&evaluated_args),

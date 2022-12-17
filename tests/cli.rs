@@ -434,11 +434,50 @@ fn print_append() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn print_write() -> Result<(), Box<dyn std::error::Error>> {
-    let in2 = assert_fs::NamedTempFile::new("in2.txt")?;
+fn printf_append() -> Result<(), Box<dyn std::error::Error>> {
+    let in2 = assert_fs::NamedTempFile::new("printf_append_in2.txt")?;
     in2.write_str("hello world\n")?;
 
-    match fs::remove_file("test_newfile.txt") {
+    match fs::remove_file("printf_append_test_newfile.txt") {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(&format!(
+        r#"
+        {{
+             printf(NR) >> "{}"
+             printf($0) >> "printf_append_test_newfile.txt"
+        }}
+    "#,
+        in2.path().to_str().unwrap(),
+    ))?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    let in1 = assert_fs::NamedTempFile::new("printf_append_in1.txt")?;
+    in1.write_str("line 1\nline 2\n")?;
+
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+
+    cmd.assert().success();
+
+    in2.assert("hello world\n1\n2\n");
+
+    assert_eq!(
+        fs::read_to_string("printf_append_test_newfile.txt")?,
+        "line 1\nline 2\n".to_string()
+    );
+    fs::remove_file("printf_append_test_newfile.txt")?;
+
+    Ok(())
+}
+
+#[test]
+fn print_write() -> Result<(), Box<dyn std::error::Error>> {
+    let in2 = assert_fs::NamedTempFile::new("print_write_in2.txt")?;
+    in2.write_str("hello world\n")?;
+
+    match fs::remove_file("print_write_test_newfile.txt") {
         Ok(_) => {}
         Err(_) => {}
     }
@@ -447,14 +486,14 @@ fn print_write() -> Result<(), Box<dyn std::error::Error>> {
         r#"
         {{
              print NR > "{}"
-             print > "test_newfile.txt"
+             print > "print_write_test_newfile.txt"
         }}
     "#,
         in2.path().to_str().unwrap(),
     ))?;
 
     let mut cmd = Command::cargo_bin("yarawk")?;
-    let in1 = assert_fs::NamedTempFile::new("in1.txt")?;
+    let in1 = assert_fs::NamedTempFile::new("print_write_in1.txt")?;
     in1.write_str("line 1\nline 2\n")?;
 
     cmd.arg("-f").arg(source.path()).arg(in1.path());
@@ -464,10 +503,49 @@ fn print_write() -> Result<(), Box<dyn std::error::Error>> {
     in2.assert("1\n2\n");
 
     assert_eq!(
-        fs::read_to_string("test_newfile.txt")?,
+        fs::read_to_string("print_write_test_newfile.txt")?,
         "line 1\nline 2\n".to_string()
     );
-    fs::remove_file("test_newfile.txt")?;
+    fs::remove_file("print_write_test_newfile.txt")?;
+
+    Ok(())
+}
+
+#[test]
+fn printf_write() -> Result<(), Box<dyn std::error::Error>> {
+    let in2 = assert_fs::NamedTempFile::new("printf_write_in2.txt")?;
+    in2.write_str("hello world\n")?;
+
+    match fs::remove_file("printf_write_test_newfile.txt") {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(&format!(
+        r#"
+        {{
+             printf(NR) > "{}"
+             printf($0) > "printf_write_test_newfile.txt"
+        }}
+    "#,
+        in2.path().to_str().unwrap(),
+    ))?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    let in1 = assert_fs::NamedTempFile::new("printf_write_in1.txt")?;
+    in1.write_str("line 1\nline 2\n")?;
+
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+
+    cmd.assert().success();
+
+    in2.assert("1\n2\n");
+
+    assert_eq!(
+        fs::read_to_string("printf_write_test_newfile.txt")?,
+        "line 1\nline 2\n".to_string()
+    );
+    fs::remove_file("printf_write_test_newfile.txt")?;
 
     Ok(())
 }
@@ -641,6 +719,7 @@ fn standard_string_functions() -> Result<(), Box<dyn std::error::Error>> {
             y = "world"
             print substr(y, 2, 69420)
             print substr(y, 2, 3)
+            printf("wow", substr(y, 2, 3))
         }
     "#,
     )?;
@@ -649,7 +728,7 @@ fn standard_string_functions() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("-f").arg(source.path());
     cmd.assert()
         .success()
-        .stdout(predicate::eq("1 hello HELLO 1\norld\norl\n"));
+        .stdout(predicate::eq("1 hello HELLO 1\norld\norl\nwow orl\n"));
 
     Ok(())
 }

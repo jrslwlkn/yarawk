@@ -231,7 +231,6 @@ impl<'a> Lexer<'a> {
                 'w' if self.peek_ws("while") => self.emit(TokenType::While, self.col, 5),
                 'f' if self.peek_ws("for") => self.emit(TokenType::For, self.col, 3),
                 'i' if self.peek_ws("in") => self.emit(TokenType::In, self.col, 2),
-                'p' if self.peek_ws("printf") => self.emit(TokenType::Printf, self.col, 6),
                 'p' if self.peek_ws("print") => self.emit(TokenType::Print, self.col, 5),
                 '\n' => {
                     if let Some(t) = self.tokens.last() {
