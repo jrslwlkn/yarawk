@@ -891,12 +891,6 @@ impl<'a> Environment<'a> {
                                 self.set_variable(name.to_string(), val.clone());
                             }
                             Expression::ArrayVariable(name, expressions) => {
-                                // TODO: References to nonexistent fields (that is,
-                                //       fields after $NF), shall evaluate to the uninitialized value. Such references shall not create new fields. However, assigning to a nonexis-
-                                //       tent field (for example, $(NF+2)=5) shall increase the value of NF; create any intervening fields with the uninitialized value;	and  cause
-                                //       the value of $0 to be recomputed, with the fields being separated by the value of OFS.  Each field variable shall have a string value or an
-                                //       uninitialized value when created. Field variables shall have the uninitialized value when created from $0 using FS and  the  variable  does
-                                //       not contain any characters.
                                 let mut var = match self.get_variable(name) {
                                     Value::ArrayType(val) => val,
                                     _ => {
@@ -926,8 +920,17 @@ impl<'a> Environment<'a> {
                             Expression::FieldVariable(expression) => {
                                 let name = self.evaluate(expression);
                                 if name == Value::Empty {
-                                    // TODO
+                                    //       References to nonexistent fields (that is, fields after $NF),
+                                    //       shall evaluate to the uninitialized value. Such references shall not create new fields.
                                     //
+                                    // TODO:
+                                    //       However, assigning to a nonexistent field (for example, $(NF+2)=5) shall
+                                    //       increase the value of NF; create any intervening fields with the uninitialized value;
+                                    //       and  cause the value of $0 to be recomputed, with the fields being separated by the value of OFS.
+                                    //
+                                    //       Each field variable shall have a string value or an uninitialized value when created.
+                                    //       Field variables shall have the uninitialized value when created from $0 using FS and the variable does
+                                    //       not contain any characters.
                                 }
                                 self.set_variable(name.to_string(), val.clone());
                             }
@@ -1084,8 +1087,6 @@ impl<'a> Environment<'a> {
                 }
             }
             Expression::Function(name, args) => {
-                let ret: Value;
-
                 let evaluated_args: Vec<Value> = args.iter().map(|a| self.evaluate(a)).collect();
                 match *name {
                     "atan2" => return crate::standard_functions::atan2(&evaluated_args),
@@ -1097,19 +1098,22 @@ impl<'a> Environment<'a> {
                     "int" => return crate::standard_functions::int(&evaluated_args),
                     "rand" => return crate::standard_functions::rand(&evaluated_args),
                     "srand" => return crate::standard_functions::srand(&evaluated_args),
-                    // "gsub" => ret = crate::standard_functions::gsub(&evaluated_args),
-                    "index" => ret = crate::standard_functions::index(&evaluated_args),
-                    "length" => ret = crate::standard_functions::length(&evaluated_args),
-                    // "match" => ret = crate::standard_functions::matchf(&evaluated_args),
-                    // "split" => ret = crate::standard_functions::split(&evaluated_args),
-                    // "printf" => ret = crate::standard_functions::printf(&evaluated_args),
-                    // "sprintf" => ret = crate::standard_functions::sprintf(&evaluated_args),
-                    // "sub" => ret = crate::standard_functions::sub(&evaluated_args),
-                    "substr" => ret = crate::standard_functions::substr(&evaluated_args),
-                    "tolower" => ret = crate::standard_functions::tolower(&evaluated_args),
-                    "toupper" => ret = crate::standard_functions::toupper(&evaluated_args),
-                    // "close" => ret = crate::standard_functions::close(&evaluated_args),
-                    // "system" => ret = crate::standard_functions::system(&evaluated_args),
+                    // TODO:
+                    // "gsub" => return crate::standard_functions::gsub(&evaluated_args),
+                    "index" => return crate::standard_functions::index(&evaluated_args),
+                    "length" => return crate::standard_functions::length(&evaluated_args),
+                    // TODO:
+                    // "match" => return crate::standard_functions::matchf(&evaluated_args),
+                    // "split" => return crate::standard_functions::split(&evaluated_args),
+                    // "printf" => return crate::standard_functions::printf(&evaluated_args),
+                    // "sprintf" => return crate::standard_functions::sprintf(&evaluated_args),
+                    // "sub" => return crate::standard_functions::sub(&evaluated_args),
+                    "substr" => return crate::standard_functions::substr(&evaluated_args),
+                    "tolower" => return crate::standard_functions::tolower(&evaluated_args),
+                    "toupper" => return crate::standard_functions::toupper(&evaluated_args),
+                    // TODO:
+                    // "close" => return crate::standard_functions::close(&evaluated_args),
+                    // "system" => return crate::standard_functions::system(&evaluated_args),
                     _ => {
                         let function = self.functions.get(&name.to_string()).unwrap().clone();
 
@@ -1122,12 +1126,11 @@ impl<'a> Environment<'a> {
                                 .insert(function.0.get(i).unwrap().to_string(), val.clone());
                         }
 
-                        (ret, _) = self.execute_in_action(&function.1.to_vec());
+                        let (ret, _) = self.execute_in_action(&function.1.to_vec());
                         self.local_scope = prev_scope;
+                        ret
                     }
-                };
-
-                ret
+                }
             }
         }
     }
