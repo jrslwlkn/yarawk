@@ -732,3 +732,65 @@ fn standard_string_functions() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn function_sub() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+            BEGIN {
+                original = "punky and punky: hello!"
+                repl = "[& with &]"
+                sub("pun.y", repl, original)
+                print original
+                print repl
+            }
+            {
+                sub("pun.y", "[& with &]")
+                print
+            }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    let in1 = assert_fs::NamedTempFile::new("function_sub.txt")?;
+    in1.write_str("hello punky and punky\n")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+
+    cmd.assert().success().stdout(predicate::eq(
+        "[punky with punky] and punky: hello!\n[& with &]\nhello [punky with punky] and punky\n",
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn function_gsub() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+            BEGIN {
+                original = "punky and punky: hello!"
+                repl = "[& with &]"
+                gsub("pun.y", repl, original)
+                print original
+                print repl
+            }
+            {
+                gsub("pun.y", "[& with &]")
+                print
+            }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    let in1 = assert_fs::NamedTempFile::new("function_gsub.txt")?;
+    in1.write_str("hello punky and punky\n")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+
+    cmd.assert().success().stdout(predicate::eq(
+        "[punky with punky] and [punky with punky]: hello!\n[& with &]\nhello [punky with punky] and [punky with punky]\n",
+    ));
+
+    Ok(())
+}

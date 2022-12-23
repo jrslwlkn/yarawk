@@ -79,6 +79,54 @@ pub fn srand(args: &[Value]) -> Value {
     Value::from_int(ret)
 }
 
+pub fn sub(args: &[Value]) -> Value {
+    //   sub(ere, repl[, in ])
+    // 	 Substitute the string repl in place of the first instance of the extended regular expression ERE in string in and return the num-
+    // 	 ber of substitutions. An <ampersand> ('&') appearing in the string repl shall be replaced by the string from in that matches  the
+    // 	 ERE.  An  <ampersand> preceded with a <backslash> shall be interpreted as the literal <ampersand> character. An occurrence of two
+    // 	 consecutive <backslash> characters shall be interpreted as just a single literal <backslash> character. Any other occurrence of a
+    // 	 <backslash>  (for  example, preceding any other character) shall be treated as a literal <backslash> character. Note that if repl
+    // 	 is a string literal (the lexical token STRING; see Grammar), the handling of the <ampersand> character occurs after  any  lexical
+    // 	 processing, including any lexical <backslash>-escape sequence processing. If in is specified and it is not an lvalue (see Expres-
+    // 	 sions in awk), the behavior is undefined. If in is omitted, awk shall use the current record ($0) in its place.
+    ensure_args_count("sub", args, 2, 3);
+    let ere = args[0].to_regex();
+    let repl = args[1].to_string();
+    let record = args[2].to_string();
+    let first_match = ere.captures(record.as_str());
+    match first_match {
+        None => Value::from_string(record),
+        Some(m) if m.get(0).is_none() => Value::from_string(record),
+        Some(m) => {
+            let m = m.get(0).unwrap();
+            let repl = repl.replace("&", m.as_str());
+            let ret = ere.replacen(record.as_str(), 1, repl).to_string();
+            Value::from_string(ret)
+        }
+    }
+}
+
+pub fn gsub(args: &[Value]) -> Value {
+    //   gsub(ere, repl[, in ])
+    //   Behave like sub (see below), except that it shall replace all occurrences of the regular expression (like the ed  utility  global
+    // 	 substitute) in $0 or in the in argument, when specified.
+    ensure_args_count("gsub", args, 2, 3);
+    let ere = args[0].to_regex();
+    let repl = args[1].to_string();
+    let record = args[2].to_string();
+    let first_match = ere.captures(record.as_str());
+    match first_match {
+        None => Value::from_string(record),
+        Some(m) if m.get(0).is_none() => Value::from_string(record),
+        Some(m) => {
+            let m = m.get(0).unwrap();
+            let repl = repl.replace("&", m.as_str());
+            let ret = ere.replace_all(record.as_str(), repl).to_string();
+            Value::from_string(ret)
+        }
+    }
+}
+
 pub fn substr(args: &[Value]) -> Value {
     // Return the at most n-character substring of s that begins at position m, numbering from 1.
     ensure_args_count("substr", args, 2, -1);

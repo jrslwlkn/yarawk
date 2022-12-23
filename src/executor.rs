@@ -1130,7 +1130,7 @@ impl<'a> Environment<'a> {
                 }
             }
             Expression::Function(name, args) => {
-                let evaluated_args: Vec<Value> = if *name == "printf" {
+                let mut evaluated_args: Vec<Value> = if *name == "printf" {
                     vec![]
                 } else {
                     args.iter().map(|a| self.evaluate(a)).collect()
@@ -1145,18 +1145,50 @@ impl<'a> Environment<'a> {
                     "int" => return crate::standard_functions::int(&evaluated_args),
                     "rand" => return crate::standard_functions::rand(&evaluated_args),
                     "srand" => return crate::standard_functions::srand(&evaluated_args),
-
-                    //    sub(ere, repl[, in ])
-                    // 	 Substitute the string repl in place of the first instance of the extended regular expression ERE in string in and return the num-
-                    // 	 ber of substitutions. An <ampersand> ('&') appearing in the string repl shall be replaced by the string from in that matches  the
-                    // 	 ERE.  An  <ampersand> preceded with a <backslash> shall be interpreted as the literal <ampersand> character. An occurrence of two
-                    // 	 consecutive <backslash> characters shall be interpreted as just a single literal <backslash> character. Any other occurrence of a
-                    // 	 <backslash>  (for  example, preceding any other character) shall be treated as a literal <backslash> character. Note that if repl
-                    // 	 is a string literal (the lexical token STRING; see Grammar), the handling of the <ampersand> character occurs after  any  lexical
-                    // 	 processing, including any lexical <backslash>-escape sequence processing. If in is specified and it is not an lvalue (see Expres-
-                    // 	 sions in awk), the behavior is undefined. If in is omitted, awk shall use the current record ($0) in its place.
-                    //
-                    // "gsub" => return crate::standard_functions::gsub(&evaluated_args),
+                    "sub" => {
+                        match args.get(2) {
+                            None => {
+                                evaluated_args.push(self.get_variable("0"));
+                                let val = crate::standard_functions::sub(&evaluated_args);
+                                self.set_variable("0".to_string(), val);
+                            }
+                            Some(e) => match e {
+                                Expression::FieldVariable(v) => {
+                                    let name = self.evaluate(v).to_string();
+                                    let val = crate::standard_functions::sub(&evaluated_args);
+                                    self.set_variable(name, val);
+                                }
+                                Expression::Variable(name) => {
+                                    let val = crate::standard_functions::sub(&evaluated_args);
+                                    self.set_variable(name.to_string(), val);
+                                }
+                                _ => return Value::Empty,
+                            },
+                        }
+                        Value::Empty
+                    }
+                    "gsub" => {
+                        match args.get(2) {
+                            None => {
+                                evaluated_args.push(self.get_variable("0"));
+                                let val = crate::standard_functions::gsub(&evaluated_args);
+                                self.set_variable("0".to_string(), val);
+                            }
+                            Some(e) => match e {
+                                Expression::FieldVariable(v) => {
+                                    let name = self.evaluate(v).to_string();
+                                    let val = crate::standard_functions::gsub(&evaluated_args);
+                                    self.set_variable(name, val);
+                                }
+                                Expression::Variable(name) => {
+                                    let val = crate::standard_functions::gsub(&evaluated_args);
+                                    self.set_variable(name.to_string(), val);
+                                }
+                                _ => return Value::Empty,
+                            },
+                        }
+                        Value::Empty
+                    }
                     "index" => return crate::standard_functions::index(&evaluated_args),
                     "length" => return crate::standard_functions::length(&evaluated_args),
                     // TODO:
@@ -1167,7 +1199,6 @@ impl<'a> Environment<'a> {
                         Value::Empty
                     }
                     // "sprintf" => return crate::standard_functions::sprintf(&evaluated_args),
-                    // "sub" => return crate::standard_functions::sub(&evaluated_args),
                     "substr" => return crate::standard_functions::substr(&evaluated_args),
                     "tolower" => return crate::standard_functions::tolower(&evaluated_args),
                     "toupper" => return crate::standard_functions::toupper(&evaluated_args),
