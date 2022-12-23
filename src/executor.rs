@@ -1206,7 +1206,11 @@ impl<'a> Environment<'a> {
                     // "close" => return crate::standard_functions::close(&evaluated_args),
                     // "system" => return crate::standard_functions::system(&evaluated_args),
                     _ => {
-                        let function = self.functions.get(&name.to_string()).unwrap().clone();
+                        let function = self
+                            .functions
+                            .get(&name.to_string())
+                            .expect(&("function ".to_string() + name + " does not exist."))
+                            .clone();
 
                         let prev_scope = self.local_scope.clone();
                         self.local_scope = HashMap::new();
