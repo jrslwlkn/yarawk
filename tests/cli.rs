@@ -714,7 +714,7 @@ fn standard_string_functions() -> Result<(), Box<dyn std::error::Error>> {
         r#"
         BEGIN {
             x = 1
-            print length(x), tolower("HELLO"), toupper("hello"), index(1, x)
+            print length(x), tolower("HELLO"), toupper("hello"), index(1, x), index(0, x)
 
             y = "world"
             print substr(y, 2, 69420)
@@ -728,7 +728,7 @@ fn standard_string_functions() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("-f").arg(source.path());
     cmd.assert()
         .success()
-        .stdout(predicate::eq("1 hello HELLO 1\norld\norl\nwow orl\n"));
+        .stdout(predicate::eq("1 hello HELLO 1 0\norld\norl\nwow orl\n"));
 
     Ok(())
 }

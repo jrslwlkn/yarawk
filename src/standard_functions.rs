@@ -148,11 +148,14 @@ pub fn substr(args: &[Value]) -> Value {
 
 pub fn index(args: &[Value]) -> Value {
     //  Return  the  position, in characters, numbering from 1, in string s where string t first occurs,
-    // or zero if it does not occur at all.
+    //  or zero if it does not occur at all.
     ensure_args_count("index", args, 2, -1);
     let s = args[0].to_string();
     let t = args[1].to_string();
-    Value::from_int((s.find(&t).unwrap_or(0) + 1) as i64)
+    match s.find(&t) {
+        None => Value::from_int(0),
+        Some(v) => Value::from_int(v as i64 + 1),
+    }
 }
 
 pub fn length(args: &[Value]) -> Value {
