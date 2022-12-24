@@ -132,17 +132,15 @@ pub fn substr(args: &[Value]) -> Value {
     // Return the at most n-character substring of s that begins at position m, numbering from 1.
     ensure_args_count("substr", args, 2, -1);
     let s = args[0].to_string();
-    let m = (args[1].to_int() - 1) as usize;
-    let n = (args[2].to_int() - 1) as usize;
-    let ret = &s
-        .get(
-            m..=(if n >= 0 {
-                cmp::min(m + n, s.len() - 1)
-            } else {
-                s.len() - 1
-            }),
-        )
-        .unwrap_or("");
+    let m = args[1].to_int() - 1;
+    let n = args[2].to_int() - 1;
+    let start = cmp::max(0, m as usize);
+    let end = if n < 0 {
+        0
+    } else {
+        cmp::min(s.len() - 1, start + n as usize)
+    };
+    let ret = &s.get(start..=end).unwrap_or("");
     Value::from_string(ret.to_string())
 }
 
