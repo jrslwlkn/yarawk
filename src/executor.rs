@@ -1285,11 +1285,11 @@ impl<'a> Environment<'a> {
                     span_start = i + 1;
                     quote = None;
                 }
-                c if (c == '\"' || c == '\'') && quote.is_none() => {
+                c if (c == '"' || c == '\'') && quote.is_none() => {
                     if span_start < i {
                         tokens.push(cmd[span_start..i].to_string());
                     }
-                    span_start = i;
+                    span_start = i + 1;
                     quote = Some(c);
                 }
                 c if c == '\\' => {
