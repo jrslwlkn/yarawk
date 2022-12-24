@@ -1,7 +1,8 @@
-use crate::executor::Value;
+use crate::executor::{Environment, Value};
 use rand::{Rng, SeedableRng};
 use std::{
     cmp,
+    process::{Command, Stdio},
     time::{Duration, SystemTime},
 };
 
@@ -167,4 +168,28 @@ pub fn tolower(args: &[Value]) -> Value {
 pub fn toupper(args: &[Value]) -> Value {
     ensure_args_count("toupper", args, -1, -1);
     Value::from_string(args[0].to_string().to_uppercase())
+}
+
+pub fn system(args: &[Value]) -> Value {
+    ensure_args_count("system", args, 1, 1);
+    let (cmd_name, args) = Environment::get_command_args(&args[0].to_string());
+    let output = match Command::new(&cmd_name)
+        .args(args)
+        .stdout(Stdio::piped())
+        .output()
+    {
+        Ok(v) => {
+            print!("{}", String::from_utf8_lossy(&v.stdout));
+            v
+        }
+        Err(e) => {
+            println!("failed to execute `{}`, {}", &cmd_name, e);
+            return Value::from_int(-69420);
+        }
+    };
+    Value::from_int(if output.status.success() {
+        0
+    } else {
+        output.status.code().unwrap_or(69420) as i64
+    })
 }

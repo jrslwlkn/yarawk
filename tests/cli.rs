@@ -794,3 +794,58 @@ fn function_gsub() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn function_close() -> Result<(), Box<dyn std::error::Error>> {
+    let in1 = assert_fs::NamedTempFile::new("function_close.txt")?;
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        format!(
+            r#"
+            BEGIN {{
+                getline line < "{}"
+                print line
+                close("{}")
+                getline line < "{}"
+                print line
+            }}
+        "#,
+            in1.path().to_str().unwrap(),
+            in1.path().to_str().unwrap(),
+            in1.path().to_str().unwrap(),
+        )
+        .as_str(),
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    in1.write_str("line 1\nline 2\n ")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::eq("line 1\nline 1\n"));
+
+    Ok(())
+}
+
+#[test]
+fn function_system() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+            BEGIN {
+                x = system("echo 'hello world'")
+                print x
+            }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::eq("hello world\n0\n"));
+
+    Ok(())
+}

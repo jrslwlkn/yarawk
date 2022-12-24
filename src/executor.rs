@@ -1202,9 +1202,22 @@ impl<'a> Environment<'a> {
                     "substr" => return crate::standard_functions::substr(&evaluated_args),
                     "tolower" => return crate::standard_functions::tolower(&evaluated_args),
                     "toupper" => return crate::standard_functions::toupper(&evaluated_args),
-                    // TODO:
-                    // "close" => return crate::standard_functions::close(&evaluated_args),
-                    // "system" => return crate::standard_functions::system(&evaluated_args),
+                    "close" => {
+                        let name = &self.evaluate(&args[0]).to_string();
+                        if args.first().is_none() {
+                            Value::from_int(-69420)
+                        } else if self.read_streams.contains_key(name) {
+                            self.read_streams.remove(name);
+                            Value::from_int(0)
+                        } else if self.write_streams.contains_key(name) {
+                            self.write_streams.get_mut(name).unwrap().close();
+                            self.write_streams.remove(name);
+                            Value::from_int(0)
+                        } else {
+                            Value::from_int(69420)
+                        }
+                    }
+                    "system" => return crate::standard_functions::system(&evaluated_args),
                     _ => {
                         let function = self
                             .functions
