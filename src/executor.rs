@@ -1193,7 +1193,20 @@ impl<'a> Environment<'a> {
                     "length" => return crate::standard_functions::length(&evaluated_args),
                     // TODO:
                     // "match" => return crate::standard_functions::matchf(&evaluated_args),
-                    // "split" => return crate::standard_functions::split(&evaluated_args),
+                    "split" => {
+                        if evaluated_args.len() == 1 {
+                            evaluated_args.push(Value::Empty);
+                        }
+                        if evaluated_args.len() == 2 {
+                            evaluated_args.push(self.get_variable("FS"));
+                        }
+                        let result = crate::standard_functions::split(&evaluated_args);
+                        let ret = result.len();
+                        if let Some(Expression::Variable(name)) = args.get(1) {
+                            self.set_variable(name.to_string(), result);
+                        }
+                        Value::from_int(ret)
+                    }
                     "printf" => {
                         print!("{}", self.get_print_string(args));
                         Value::Empty
@@ -1484,6 +1497,13 @@ impl Value {
         match &self {
             Self::PrimitiveType(val) => val.clone(),
             _ => PrimitiveType::String("".to_string()),
+        }
+    }
+
+    pub fn len(&self) -> i64 {
+        match &self {
+            Self::ArrayType(a) => a.len() as i64,
+            _ => 0,
         }
     }
 }

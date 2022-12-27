@@ -1,7 +1,11 @@
-use crate::executor::{Environment, Value};
+use crate::{
+    executor::{Environment, Value},
+    token::PrimitiveType,
+};
 use rand::{Rng, SeedableRng};
 use std::{
     cmp,
+    collections::HashMap,
     process::{Command, Stdio},
     time::{Duration, SystemTime},
 };
@@ -164,6 +168,24 @@ pub fn gsub(args: &[Value]) -> Value {
             Value::from_string(ret)
         }
     }
+}
+
+pub fn split(args: &[Value]) -> Value {
+    // split(s, a[, fs  ])
+    // Split the string s into array elements a[1], a[2], ..., a[n], and return n.
+    // All elements of the array shall be deleted before the split is performed.
+    // The separation shall be done with the ERE fs or with the field separator FS if fs is not given.
+    // Each array element shall have a string value when created and,
+    // if appropriate, the array element shall be considered a numeric string.
+    ensure_args_count("split", args, 2, 3);
+    let s = args[0].to_string();
+    let fs = args[2].to_regex();
+    let arr: HashMap<String, PrimitiveType> = fs
+        .split(s.as_str())
+        .enumerate()
+        .map(|(i, x)| (i.to_string(), PrimitiveType::String(x.to_string())))
+        .collect();
+    Value::from_array(arr)
 }
 
 pub fn substr(args: &[Value]) -> Value {

@@ -850,3 +850,33 @@ fn function_system() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn function_split() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+            BEGIN {
+                original = "a1b2c3d"
+                x = split(original, a, "\d")
+                print "x is", x
+                print a[0], a[1], a[2], a[3]
+            }
+            {
+                split($0, a)
+                print a[0], a[1]
+            }
+    "#,
+    )?;
+
+    let in1 = assert_fs::NamedTempFile::new("function_close.txt")?;
+    in1.write_str("x y\n")?;
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path()).arg(in1.path());
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::eq("x is 4\na b c d\nx y\n"));
+
+    Ok(())
+}
