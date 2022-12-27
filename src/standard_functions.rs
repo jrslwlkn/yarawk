@@ -100,8 +100,27 @@ pub fn sub(args: &[Value]) -> Value {
         Some(m) if m.get(0).is_none() => Value::from_string(record),
         Some(m) => {
             let m = m.get(0).unwrap();
-            let repl = repl.replace("&", m.as_str());
-            let ret = ere.replacen(record.as_str(), 1, repl).to_string();
+            let rep = repl
+                .split_inclusive("&")
+                .map(|mut s| {
+                    if s.ends_with("&") {
+                        s = &s[..s.len() - 1];
+                        if s.ends_with('\\') {
+                            let mut r = &s[..s.len() - 1];
+                            if s.ends_with('\\') {
+                                r = &r[..r.len() - 1];
+                            }
+                            r.to_string() + "&"
+                        } else {
+                            s.to_string() + m.as_str()
+                        }
+                    } else {
+                        s.to_owned()
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("");
+            let ret = ere.replacen(record.as_str(), 1, rep).to_string();
             Value::from_string(ret)
         }
     }
@@ -121,8 +140,27 @@ pub fn gsub(args: &[Value]) -> Value {
         Some(m) if m.get(0).is_none() => Value::from_string(record),
         Some(m) => {
             let m = m.get(0).unwrap();
-            let repl = repl.replace("&", m.as_str());
-            let ret = ere.replace_all(record.as_str(), repl).to_string();
+            let rep = repl
+                .split_inclusive("&")
+                .map(|mut s| {
+                    if s.ends_with("&") {
+                        s = &s[..s.len() - 1];
+                        if s.ends_with('\\') {
+                            let mut r = &s[..s.len() - 1];
+                            if s.ends_with('\\') {
+                                r = &r[..r.len() - 1];
+                            }
+                            r.to_string() + "&"
+                        } else {
+                            s.to_string() + m.as_str()
+                        }
+                    } else {
+                        s.to_owned()
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("");
+            let ret = ere.replace_all(record.as_str(), rep).to_string();
             Value::from_string(ret)
         }
     }

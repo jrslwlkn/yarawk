@@ -741,13 +741,13 @@ fn function_sub() -> Result<(), Box<dyn std::error::Error>> {
         r#"
             BEGIN {
                 original = "punky and punky: hello!"
-                repl = "[& with &]"
+                repl = "[\\& with &]"
                 sub("pun.y", repl, original)
                 print original
                 print repl
             }
             {
-                sub("pun.y", "[& with &]")
+                sub("pun.y", "[\\& with &]")
                 print
             }
     "#,
@@ -759,7 +759,7 @@ fn function_sub() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("-f").arg(source.path()).arg(in1.path());
 
     cmd.assert().success().stdout(predicate::eq(
-        "[punky with punky] and punky: hello!\n[& with &]\nhello [punky with punky] and punky\n",
+        "[& with punky] and punky: hello!\n[\\\\& with &]\nhello [& with punky] and punky\n",
     ));
 
     Ok(())
@@ -772,13 +772,13 @@ fn function_gsub() -> Result<(), Box<dyn std::error::Error>> {
         r#"
             BEGIN {
                 original = "punky and punky: hello!"
-                repl = "[& with &]"
+                repl = "[\\& with &]"
                 gsub("pun.y", repl, original)
                 print original
                 print repl
             }
             {
-                gsub("pun.y", "[& with &]")
+                gsub("pun.y", "[\\& with &]")
                 print
             }
     "#,
@@ -790,7 +790,7 @@ fn function_gsub() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg("-f").arg(source.path()).arg(in1.path());
 
     cmd.assert().success().stdout(predicate::eq(
-        "[punky with punky] and [punky with punky]: hello!\n[& with &]\nhello [punky with punky] and [punky with punky]\n",
+        "[& with punky] and [& with punky]: hello!\n[\\\\& with &]\nhello [& with punky] and [& with punky]\n",
     ));
 
     Ok(())
