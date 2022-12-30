@@ -880,3 +880,26 @@ fn function_split() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn function_match() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+            BEGIN {
+                original = "line-a 1 line-b 1"
+                print match(original, "1"), RSTART, RLENGTH
+                print match(original, "2"), RSTART, RLENGTH
+            }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::eq("8 8 1\n0 0 -1\n"));
+
+    Ok(())
+}

@@ -170,6 +170,24 @@ pub fn gsub(args: &[Value]) -> Value {
     }
 }
 
+pub fn matchf(args: &[Value]) -> (Value, Value) {
+    // match(s, ere)
+    // Return the position, in characters, numbering from 1,
+    // in string s where the extended regular expression ere occurs, or zero if it does not occur at all.
+    // RSTART shall be set to the starting position (which is the same as the returned value), zero if no match is found;
+    // RLENGTH shall be set to the length of the matched string, -1 if no match is found.
+    ensure_args_count("match", args, 2, 2);
+    let s = args[0].to_string();
+    let ere = args[1].to_regex();
+    match ere.find(&s) {
+        Some(m) => (
+            Value::from_int(m.start() as i64 + 1),
+            Value::from_int((m.end() - m.start()) as i64),
+        ),
+        None => (Value::from_int(0), Value::from_int(-1)),
+    }
+}
+
 pub fn split(args: &[Value]) -> Value {
     // split(s, a[, fs  ])
     // Split the string s into array elements a[1], a[2], ..., a[n], and return n.

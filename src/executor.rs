@@ -1191,8 +1191,12 @@ impl<'a> Environment<'a> {
                     }
                     "index" => return crate::standard_functions::index(&evaluated_args),
                     "length" => return crate::standard_functions::length(&evaluated_args),
-                    // TODO:
-                    // "match" => return crate::standard_functions::matchf(&evaluated_args),
+                    "match" => {
+                        let (rstart, rlength) = crate::standard_functions::matchf(&evaluated_args);
+                        self.set_variable("RSTART".to_string(), rstart.clone());
+                        self.set_variable("RLENGTH".to_string(), rlength);
+                        rstart
+                    }
                     "split" => {
                         if evaluated_args.len() == 1 {
                             evaluated_args.push(Value::Empty);
