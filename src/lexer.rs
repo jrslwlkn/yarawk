@@ -274,10 +274,18 @@ impl<'a> Lexer<'a> {
                     loop {
                         let next_char = self.peek_next();
                         match next_char {
-                            _ if next_char == quote || next_char == '\0' => {
+                            _ if next_char == quote
+                                && self.chars.get(self.pos).unwrap().to_owned() != '\\'
+                                || next_char == '\0' =>
+                            {
                                 self.emit(
                                     TokenType::Literal(PrimitiveType::String(
-                                        self.input[start..=self.pos].to_string(),
+                                        self.input[start..=self.pos]
+                                            .to_string()
+                                            .replace("\\t", "\t")
+                                            .replace("\\r", "\r")
+                                            .replace("\\n", "\n")
+                                            .replace("\\(.)", "{$1}"),
                                     )),
                                     col,
                                     1,
