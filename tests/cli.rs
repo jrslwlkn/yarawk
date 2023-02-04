@@ -720,7 +720,7 @@ fn standard_string_functions() -> Result<(), Box<dyn std::error::Error>> {
             print substr(y, 3, -1)
             print substr(y, 2, 69420)
             print substr(y, 2, 3)
-            printf("wow", substr(y, 2, 3))
+            printf("%s %s\n", "wow", substr(y, 2, 3))
         }
     "#,
     )?;
@@ -900,6 +900,39 @@ fn function_match() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .success()
         .stdout(predicate::eq("8 8 1\n0 0 -1\n"));
+
+    Ok(())
+}
+
+#[test]
+fn printf_formatting() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+            BEGIN {
+                s = "hello"
+                d = 4.2
+                i = 123
+                printf("char: %c\ndecimal: %d\nexponential: %e\nfloat: %f\nthe g: %010.6g\noctal: %o\nstring: %010.4s\nunsigned hex: %x\njust the %%: %%",
+                       s, d, d, d, d, d, s, i)
+            }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+
+    cmd.assert().success().stdout(predicate::eq(
+        "char: h
+decimal: 4
+exponential: 4.200000e0
+float: 4.200000
+the g: 004.200000
+octal: 4
+string: 00000hello
+unsigned hex: 7b
+just the %: %",
+    ));
 
     Ok(())
 }

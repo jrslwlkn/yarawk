@@ -618,6 +618,146 @@ impl<'a> Environment<'a> {
         ret
     }
 
+    fn get_padded(s: &str, c: char, len: i32, from_left: bool) -> String {
+        if len - s.len() as i32 <= 0 {
+            return s.to_string();
+        };
+        let add_len = (len - s.len() as i32) as usize;
+        let pad = c.to_string().repeat(add_len);
+        if from_left {
+            pad + s
+        } else {
+            s.to_string() + pad.as_str()
+        }
+    }
+
+    fn get_printf_element(
+        &mut self,
+        expression: &Expression<'a>,
+        left_justify: bool,
+        zero_pad: bool,
+        width: i32,
+        precision: i32,
+        template_type: char,
+    ) -> String {
+        let value = self.evaluate(expression);
+        let pad = if zero_pad { '0' } else { ' ' };
+        match template_type {
+            '%' => Environment::get_padded("%", pad, width, !left_justify),
+            'c' => Environment::get_padded(
+                &value.to_string().chars().next().unwrap_or(' ').to_string(),
+                pad,
+                width,
+                !left_justify,
+            ),
+            's' => Environment::get_padded(&value.to_string(), pad, width, !left_justify),
+            'd' => Environment::get_padded(&value.to_int().to_string(), pad, width, !left_justify),
+            'o' => {
+                Environment::get_padded(&format!("{:o}", value.to_int()), pad, width, !left_justify)
+            }
+            'x' => {
+                Environment::get_padded(&format!("{:x}", value.to_int()), pad, width, !left_justify)
+            }
+            'e' => Environment::get_padded(
+                &format!(
+                    "{:.prec$e}",
+                    value.to_float(),
+                    prec = if precision < 0 { 6 } else { precision as usize }
+                ),
+                pad,
+                width,
+                !left_justify,
+            ),
+            'f' => Environment::get_padded(
+                &format!(
+                    "{:.prec$}",
+                    value.to_float(),
+                    prec = if precision < 0 { 6 } else { precision as usize }
+                ),
+                pad,
+                width,
+                !left_justify,
+            ),
+            'g' => {
+                let v = value.to_float();
+                if v < 100_000. {
+                    Environment::get_padded(
+                        &format!(
+                            "{:.prec$}",
+                            v,
+                            prec = if precision < 0 { 6 } else { precision as usize }
+                        ),
+                        pad,
+                        width,
+                        !left_justify,
+                    )
+                } else {
+                    Environment::get_padded(
+                        &format!(
+                            "{:.prec$e}",
+                            v,
+                            prec = if precision < 0 { 6 } else { precision as usize }
+                        ),
+                        pad,
+                        width,
+                        !left_justify,
+                    )
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn get_printf_string(
+        &mut self,
+        format_template: &str,
+        expressions: &Vec<Expression<'a>>,
+    ) -> String {
+        let pattern = Regex::new(r"%(-)?(0)?(\d*).?(\d*)([cdefgosx%])")
+            .expect("printf regex conversion match failed");
+        let captures = pattern.captures_iter(format_template);
+        let mut ret = String::from(format_template);
+        for (i, capture) in captures.enumerate() {
+            let original_match = match capture.get(0) {
+                None => "",
+                Some(m) => m.as_str(),
+            };
+            let left_justify = match capture.get(1) {
+                None => false,
+                Some(m) => !m.as_str().is_empty(),
+            };
+            let zero_pad = match capture.get(2) {
+                None => false,
+                Some(_) => true,
+            };
+            let width = match capture.get(3) {
+                None => -1,
+                Some(w) => w.as_str().parse::<i32>().unwrap_or(-1),
+            };
+            let precision = match capture.get(4) {
+                None => -1,
+                Some(p) => p.as_str().parse::<i32>().unwrap_or(-1),
+            };
+            let template_type = match capture.get(5) {
+                None => 's',
+                Some(t) => t.as_str().chars().nth(0).unwrap_or('s'),
+            };
+            ret = ret.replacen(
+                original_match,
+                &self.get_printf_element(
+                    expressions.get(i).unwrap_or(&Expression::Empty),
+                    left_justify,
+                    zero_pad,
+                    width,
+                    precision,
+                    template_type,
+                ),
+                1,
+            );
+        }
+        ret
+    }
+
     fn evaluate(&mut self, expression: &Expression<'a>) -> Value {
         match expression {
             Expression::Empty => Value::Empty,
@@ -1130,7 +1270,7 @@ impl<'a> Environment<'a> {
                 }
             }
             Expression::Function(name, args) => {
-                let mut evaluated_args: Vec<Value> = if *name == "printf" {
+                let mut evaluated_args: Vec<Value> = if *name == "printf" || *name == "sprintf" {
                     vec![]
                 } else {
                     args.iter().map(|a| self.evaluate(a)).collect()
@@ -1211,11 +1351,22 @@ impl<'a> Environment<'a> {
                         }
                         Value::from_int(ret)
                     }
-                    "printf" => {
-                        print!("{}", self.get_print_string(args));
+                    "printf" | "sprintf" => {
+                        let template = match args.first() {
+                            None => return Value::Empty,
+                            Some(v) => self.evaluate(v).to_string(),
+                        };
+                        if *name == "sprintf" {
+                            return Value::from_string(
+                                self.get_printf_string(template.as_str(), &args[1..].to_vec()),
+                            );
+                        }
+                        print!(
+                            "{}",
+                            self.get_printf_string(template.as_str(), &args[1..].to_vec())
+                        );
                         Value::Empty
                     }
-                    // "sprintf" => return crate::standard_functions::sprintf(&evaluated_args),
                     "substr" => return crate::standard_functions::substr(&evaluated_args),
                     "tolower" => return crate::standard_functions::tolower(&evaluated_args),
                     "toupper" => return crate::standard_functions::toupper(&evaluated_args),
