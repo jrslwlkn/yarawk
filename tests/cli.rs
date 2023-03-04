@@ -936,3 +936,25 @@ just the %: %",
 
     Ok(())
 }
+
+#[test]
+fn for_loop() -> Result<(), Box<dyn std::error::Error>> {
+    let source = assert_fs::NamedTempFile::new("source.awk")?;
+    source.write_str(
+        r#"
+            BEGIN {
+                for (i = 0; i < 3; ++i)
+                    print i
+            }
+    "#,
+    )?;
+
+    let mut cmd = Command::cargo_bin("yarawk")?;
+    cmd.arg("-f").arg(source.path());
+
+    cmd.assert().success().stdout(predicate::eq(
+            "0\n1\n2\n"
+    ));
+
+    Ok(())
+}

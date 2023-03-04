@@ -509,15 +509,15 @@ impl<'a> Environment<'a> {
                 Value::Empty
             }
             Statement::For(e1, Some(cond), Some(e2), statements) => {
+                self.evaluate(e1);
                 while self.evaluate(cond).is_truthy() {
-                    self.evaluate(e1);
-                    self.evaluate(e2);
                     match self.execute_in_loop(statements) {
                         Value::Empty => {}
                         val => {
                             return val;
                         }
                     }
+                    self.evaluate(e2);
                 }
                 Value::Empty
             }
